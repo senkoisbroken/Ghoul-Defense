@@ -4,7 +4,7 @@ from pathlib import Path
 
 import cv2
 
-from ghoul import canonical, clean
+from names import canonical, clean
 
 FOLDERS = {'perk': 'perks', 'relic': 'relics'}
 

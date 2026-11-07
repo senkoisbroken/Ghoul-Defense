@@ -19,6 +19,7 @@ folder once, including users who have the older file-picker updater. Close the
 macro and run **update.bat**. It downloads the latest published GitHub release,
 checks its SHA-256 checksum, backs up replaced files, and keeps `.venv`, logs,
 and existing saved card pictures. Then run `start.bat`.
+The small helper includes `package_layout.py`; keep it with `updater.py`.
 
 Friends do not need GitHub accounts, tokens, or GitHub CLI. Offline updates
 remain available by dragging a friend ZIP onto `update.bat`.
@@ -30,3 +31,8 @@ on screen visibility and recognition; check a first run on a new layout.
 The distributable source is in `Ghoul-Defense/`. Releases exclude environments,
 logs, diagnostic captures, and development screenshots. See the included
 README for controls, priorities, saved pictures and troubleshooting.
+
+The current refactor separates OCR/card policy, detection, automation and input
+modules while preserving controls and recognition thresholds. The updater
+shares the runtime inventory used by build fingerprints, rechecks the helper
+under its update lock, and retains the newest five safely removable backups.

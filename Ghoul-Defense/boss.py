@@ -6,11 +6,23 @@ import re
 
 import cv2
 import numpy as np
-from ghoul import TextReader, gate_bar
+from frame import to_960
+from gate import gate_bar
+from ocr import TextReader, _read_raw
+
+
+# Recognition confidence and consecutive weak-header hold limits.
+HUD_CONFIDENCE = .7
+WEAK_HEADER_CONFIDENCE = .3
+MAX_WEAK_HEADERS = 2
+# Common health-outline scale variants and bounded template-cache size.
+BAR_TEMPLATE_SCALES = (.85, .925, 1, 1.075, 1.15)
+BAR_MASK_CACHE_LIMIT = 32
+_MARKER_UNSET = object()
 
 
 def normalize(image):
-    return cv2.resize(image, (960, round(image.shape[0] * 960 / image.shape[1])))
+    return to_960(image)
 
 
 def text_crop(crop, colored=False):
@@ -97,43 +109,18 @@ def bar_masks(world=1.0):
     key = round(world, 3)
     masks = _BAR_MASKS.get(key)
     if masks is None:
-        if len(_BAR_MASKS) >= 32:
+        if len(_BAR_MASKS) >= BAR_MASK_CACHE_LIMIT:
             _BAR_MASKS.clear()
         masks = tuple(cv2.inRange(
             cv2.cvtColor(cv2.resize(_bar, None, fx=s * world, fy=s * world),
                          cv2.COLOR_BGR2HSV),
-            (0, 0, 135), (180, 100, 255)) for s in (.85, .925, 1, 1.075, 1.15))
+            (0, 0, 135), (180, 100, 255)) for s in BAR_TEMPLATE_SCALES)
         _BAR_MASKS[key] = masks
     return masks
 
 
-def locate_boss(image, road_top, details=None):
-    details = details if details is not None else {}
-    height, width = image.shape[:2]
-    world = world_scale(image)
-    marker = player_marker(image, road_top)
-    if marker:
-        # Visible geometry survives cropped screenshots and viewport changes.
-        world = marker[2] / 44
-    # A tall boss's bar can sit above the road's top edge. Keep the road
-    # bound for player tracking, but include the space above it for bars.
-    road_top = max(0, road_top-round(70*world))
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    white = cv2.inRange(hsv,
-                        (0, 0, 80), (180, 180, 255))
-    bottom = round(height * .88)
-    region = white.copy()
-    region[:road_top] = 0
-    region[bottom:] = 0
-    region = cv2.morphologyEx(
-        region, cv2.MORPH_CLOSE,
-        cv2.getStructuringElement(cv2.MORPH_RECT, (3, 1)))
-    region = cv2.morphologyEx(
-        region, cv2.MORPH_OPEN,
-        cv2.getStructuringElement(cv2.MORPH_RECT,
-                                  (max(20, round(38 * world)), 1)))
-    red = cv2.bitwise_or(cv2.inRange(hsv, (0, 140, 180), (10, 255, 255)),
-                         cv2.inRange(hsv, (170, 140, 180), (180, 255, 255)))
+def _health_runs(region, road_top, bottom, world):
+    """Read horizontal rims separately from sprite contours."""
     lines = []
     # Read horizontal runs separately: hair touching a rim must not merge
     # its contour into a tall component and erase the health bar.
@@ -143,58 +130,69 @@ def locate_boss(image, road_top, details=None):
             w = int(end - x)
             if round(40 * world) <= w <= round(49 * world):
                 lines.append((int(x), y, w))
-    # Also project from a straight top rim when the bottom touches white hair.
+    return lines
+
+
+def _project_runs(lines, bottom, world):
+    """Project top rims to possible bottom rims, keeping discovery order."""
     projected = []
     for x, y, w in lines:
         for depth in range(max(2, round(2*world)), max(4, round(5*world))+1):
             by = y+depth
             if by < bottom:
                 projected.append((x, by, w))
-    lines.extend(projected)
+    return projected
+
+
+def _verify_bar(hsv, white, red, x, y, w, depth):
+    """Verify red fill, empty interior, and both sides of a common bar."""
+    width = white.shape[1]
+    top = y-depth
+    inside = hsv[top+1:y, x+2:x+w-2]
+    fill = red[top+1:y, x+2:x+w-2] > 0
+    # The interior is a horizontal red fill followed by dark gray,
+    # rather than arbitrary bright/red portions of the sprite.
+    empty = (inside[:, :, 1] < 130) & (inside[:, :, 2] < 135)
+    rim = (white[top, x+2:x+w-2] | red[top, x+2:x+w-2]) > 0
+    left_rim = white[top:y+1, max(0,x-2):x+2] > 0
+    right_rim = white[top:y+1, x+w-2:min(width,x+w+2)] > 0
+    return (fill.size and np.mean(fill) >= .15
+            and np.mean(fill[:, :3]) >= .5
+            and np.mean(fill | empty) >= .88 and np.mean(rim) >= .65
+            and np.max(np.mean(left_rim, axis=0)) >= .65
+            and np.max(np.mean(right_rim, axis=0)) >= .65)
+
+
+def _bar_peaks(hsv, white, red, lines, road_top, world):
     peaks = []
     for x, y, w in lines:
         for depth in range(max(2, round(2*world)), max(4, round(5*world))+1):
             top = y-depth
             if top < road_top:
                 continue
-            inside = hsv[top+1:y, x+2:x+w-2]
-            fill = red[top+1:y, x+2:x+w-2] > 0
-            # The interior is a horizontal red fill followed by dark gray,
-            # rather than arbitrary bright/red portions of the sprite.
-            empty = (inside[:, :, 1] < 130) & (inside[:, :, 2] < 135)
-            rim = (white[top, x+2:x+w-2] | red[top, x+2:x+w-2]) > 0
-            left_rim = white[top:y+1, max(0,x-2):x+2] > 0
-            right_rim = white[top:y+1, x+w-2:min(width,x+w+2)] > 0
-            if (fill.size and np.mean(fill) >= .15
-                    and np.mean(fill[:, :3]) >= .5
-                    and np.mean(fill | empty) >= .88 and np.mean(rim) >= .65
-                    and np.max(np.mean(left_rim, axis=0)) >= .65
-                    and np.max(np.mean(right_rim, axis=0)) >= .65):
+            if _verify_bar(hsv, white, red, x, y, w, depth):
                 peaks.append((w, x, top, w, depth+1))
                 break
-    # A thin, partially filled bar may have an interrupted bottom edge. Its
-    # full ring can still verify the same common health-bar geometry.
-    if not peaks:
-        strict = cv2.inRange(hsv, (0, 0, 135), (180, 100, 255))[road_top:bottom]
-        for template in bar_masks(world):
-            bh, bw = template.shape
-            if strict.shape[0] < bh:
-                continue
-            scores = cv2.matchTemplate(strict, template, cv2.TM_CCOEFF_NORMED)
-            _, score, _, (bx, by) = cv2.minMaxLoc(scores)
-            if score >= .88:
-                peaks.append((float(score), bx, by+road_top, bw, bh))
-    if not peaks:
-        details['reason'] = 'health_bar_not_found'
-        return None
-    peaks.sort(reverse=True)
-    _, x, y, w, h = peaks[0]
-    details['bars'] = [(int(px), int(py), int(pw), int(ph))
-                       for _, px, py, pw, ph in peaks]
-    if any(abs(px - x) > round(20 * world) or abs(py - y) > round(10 * world)
-           for _, px, py, _, _ in peaks[1:]):
-        details['reason'] = 'ambiguous_health_bars'
-        return None
+    return peaks
+
+
+def _template_peaks(hsv, road_top, bottom, world):
+    """Fallback for a partial bar with an interrupted bottom rim."""
+    peaks = []
+    strict = cv2.inRange(hsv, (0, 0, 135), (180, 100, 255))[road_top:bottom]
+    for template in bar_masks(world):
+        bh, bw = template.shape
+        if strict.shape[0] < bh:
+            continue
+        scores = cv2.matchTemplate(strict, template, cv2.TM_CCOEFF_NORMED)
+        _, score, _, (bx, by) = cv2.minMaxLoc(scores)
+        if score >= .88:
+            peaks.append((float(score), bx, by+road_top, bw, bh))
+    return peaks
+
+
+def _sprite_background(image, x, y, w, h, bottom):
+    width = image.shape[1]
     # Estimate the road background separately at each height, outside the
     # sprite. This supports different boss heights and colors without an art
     # template or a name-to-lane-offset table.
@@ -207,9 +205,17 @@ def locate_boss(image, road_top, details=None):
         if hi - lo > 5:
             samples.append(image[top:bottom, lo:hi])
     if not samples or roi.size == 0:
-        details['reason'] = 'background_unavailable'
         return None
     background = np.median(np.concatenate(samples, axis=1), axis=1)[:, None, :]
+    return roi, background, top, left
+
+
+def _isolate_sprite(image, x, y, w, h, bottom, world, details):
+    sampled = _sprite_background(image, x, y, w, h, bottom)
+    if sampled is None:
+        details['reason'] = 'background_unavailable'
+        return None
+    roi, background, top, left = sampled
     mask = np.where(np.max(np.abs(roi.astype(float) - background), axis=2) > 35,
                     255, 0).astype(np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,
@@ -234,6 +240,124 @@ def locate_boss(image, road_top, details=None):
     return top + candidates[0][1] + round(4 * world)
 
 
+def locate_boss(image, road_top, details=None, marker=_MARKER_UNSET):
+    details = details if details is not None else {}
+    # Omitted marker means standalone detection; explicit None means that
+    # this frame already searched for a marker and found none.
+    height = image.shape[0]
+    world = world_scale(image)
+    if marker is _MARKER_UNSET:
+        marker = player_marker(image, road_top)
+    if marker:
+        # Visible geometry survives cropped screenshots and viewport changes.
+        world = marker[2] / 44
+    # A tall boss's bar can sit above the road's top edge. Keep the road
+    # bound for player tracking, but include the space above it for bars.
+    road_top = max(0, road_top-round(70*world))
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    white = cv2.inRange(hsv,
+                        (0, 0, 80), (180, 180, 255))
+    bottom = round(height * .88)
+    region = white.copy()
+    region[:road_top] = 0
+    region[bottom:] = 0
+    region = cv2.morphologyEx(
+        region, cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (3, 1)))
+    region = cv2.morphologyEx(
+        region, cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_RECT,
+                                  (max(20, round(38 * world)), 1)))
+    red = cv2.bitwise_or(cv2.inRange(hsv, (0, 140, 180), (10, 255, 255)),
+                         cv2.inRange(hsv, (170, 140, 180), (180, 255, 255)))
+    lines = _health_runs(region, road_top, bottom, world)
+    lines.extend(_project_runs(lines, bottom, world))
+    peaks = _bar_peaks(hsv, white, red, lines, road_top, world)
+    if not peaks:
+        peaks = _template_peaks(hsv, road_top, bottom, world)
+    if not peaks:
+        details['reason'] = 'health_bar_not_found'
+        return None
+    peaks.sort(reverse=True)
+    _, x, y, w, h = peaks[0]
+    details['bars'] = [(int(px), int(py), int(pw), int(ph))
+                       for _, px, py, pw, ph in peaks]
+    if any(abs(px - x) > round(20 * world) or abs(py - y) > round(10 * world)
+           for _, px, py, _, _ in peaks[1:]):
+        details['reason'] = 'ambiguous_health_bars'
+        return None
+    return _isolate_sprite(image, x, y, w, h, bottom, world, details)
+
+
+def _native_crop(original, scale, left, top, right, bottom):
+    return original[max(0, round(top*scale)):round(bottom*scale),
+                    max(0, round(left*scale)):round(right*scale)]
+
+
+def _read_hud(original, image, gate, reader):
+    """Read native pixels; retry color title before HP resampling variants."""
+    _, y, _, h = gate
+    world = world_scale(image)
+    # The green fill shrinks when the gate takes damage; its midpoint is
+    # not the HUD's center. The HUD remains centered in the client view.
+    center = image.shape[1] // 2
+    scale = original.shape[1] / image.shape[1]
+
+    # Locate the HUD in normalized geometry, but recognize its original
+    # pixels so decimal points do not disappear in a second downsample.
+    count = _native_crop(original, scale, center-round(75*world), max(0,y-round(16*world)),
+                        center+round(75*world), y-1)
+    name = _native_crop(original, scale, center-round(123*world), y+round(h*2),
+                       center+round(45*world), y+round(h*3.9))
+    health = _native_crop(original, scale, center+round(28*world), y+round(h*2),
+                         center+round(125*world), y+round(h*3.9))
+    if any(crop.size == 0 for crop in (count, name, health)):
+        return None
+    rows = list(_read_raw(reader, [text_crop(count), text_crop(name),
+                                   text_crop(health)]))
+    if not rows[1][0] or rows[1][1] < HUD_CONFIDENCE:
+        # Retry only the unreadable title in color. Normal white titles
+        # keep their tighter crop instead of including red scenery.
+        rows[1] = _read_raw(reader, [text_crop(name, colored=True)])[0]
+    if rows[2][1] < HUD_CONFIDENCE or hp_fraction(rows[2][0]) is None:
+        # Compression can merge a decimal or slash with the text outline.
+        # Retry actual pixels with different margins/resampling; retain
+        # the HP grammar and confidence requirements.
+        cropped = text_crop(health)
+        _, binary = cv2.threshold(cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY),
+                                   170, 255, cv2.THRESH_BINARY)
+        alternatives = _read_raw(reader, [
+            cv2.resize(cropped, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC),
+            cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR),
+            cv2.cvtColor(255-binary, cv2.COLOR_GRAY2BGR)])
+        valid = [row for row in alternatives if hp_fraction(row[0]) is not None]
+        if valid:
+            best = max(valid, key=lambda row: row[1])
+            if best[1] > rows[2][1]:
+                rows[2] = best
+    return rows
+
+
+def _parse_remaining(text, confidence):
+    match = re.fullmatch(r'\s*(\d+)\s*remaining\s*', text, re.IGNORECASE)
+    if match is None or confidence < HUD_CONFIDENCE:
+        return None
+    return int(match[1])
+
+
+def _parse_boss_name(text, confidence):
+    name = re.sub(r'\s+is\s+enraged[!\s]*$', '', text,
+                  flags=re.IGNORECASE).strip()
+    return None if confidence < HUD_CONFIDENCE or len(name) < 4 else name
+
+
+def _parse_hp(text, confidence):
+    """Keep unconfirmed header text distinct from confirmed but invalid HP."""
+    if confidence < HUD_CONFIDENCE or re.search(r'\d.*[/|].*\d', text) is None:
+        return False, None
+    return True, hp_fraction(text)
+
+
 @dataclass
 class BossObservation:
     name: str
@@ -255,6 +379,7 @@ class BossTracker:
         self.last = {}
 
     def read(self, original):
+        """Keep the last confirmed boss while a transient HUD frame is uncertain."""
         result = self._read(original)
         if result is not None:
             self.engaged = result
@@ -263,10 +388,13 @@ class BossTracker:
         reason = self.last.get('reason')
         if self.engaged is not None and reason in ('counter_unreadable', 'boss_header_not_confirmed'):
             if reason == 'boss_header_not_confirmed':
+                # Only consecutive weak name and HP rows expire engagement.
                 rows = self.last.get('hud', [])
-                weak = len(rows) == 3 and rows[1][1] < .3 and rows[2][1] < .3
+                weak = (len(rows) == 3
+                        and rows[1][1] < WEAK_HEADER_CONFIDENCE
+                        and rows[2][1] < WEAK_HEADER_CONFIDENCE)
                 self.missing_headers = self.missing_headers + 1 if weak else 0
-                if self.missing_headers >= 2:
+                if self.missing_headers >= MAX_WEAK_HEADERS:
                     self.engaged = None
                     return None
             previous = self.engaged
@@ -278,82 +406,41 @@ class BossTracker:
 
     def _read(self, original):
         image = normalize(original)
-        gate = gate_bar(image)
+        if self.reader is None:
+            self.reader = TextReader(lazy=True)
+        gate = gate_bar(image, self.reader)
         if gate is None:
             self.last = {'reason': 'gate_not_visible'}
             return None
-        x, y, w, h = gate
-        world = world_scale(image)
-        # The green fill shrinks when the gate takes damage; its midpoint is
-        # not the HUD's center. The HUD remains centered in the client view.
-        center = image.shape[1] // 2
-        scale = original.shape[1] / image.shape[1]
-
-        def native_crop(left, top, right, bottom):
-            return original[max(0, round(top*scale)):round(bottom*scale),
-                            max(0, round(left*scale)):round(right*scale)]
-
-        # Locate the HUD in normalized geometry, but recognize its original
-        # pixels so decimal points do not disappear in a second downsample.
-        count = native_crop(center-round(75*world), max(0,y-round(16*world)),
-                            center+round(75*world), y-1)
-        name = native_crop(center-round(123*world), y+round(h*2),
-                           center+round(45*world), y+round(h*3.9))
-        health = native_crop(center+round(28*world), y+round(h*2),
-                             center+round(125*world), y+round(h*3.9))
-        if any(crop.size == 0 for crop in (count, name, health)):
+        rows = _read_hud(original, image, gate, self.reader)
+        if rows is None:
             return None
-        if self.reader is None:
-            self.reader = TextReader()
-        rows = list(self.reader.read([text_crop(count), text_crop(name),
-                                      text_crop(health)]))
-        if not rows[1][0] or rows[1][1] < .7:
-            # Retry only the unreadable title in color. Normal white titles
-            # keep their tighter crop instead of including red scenery.
-            rows[1] = self.reader.read([text_crop(name, colored=True)])[0]
-        if rows[2][1] < .7 or hp_fraction(rows[2][0]) is None:
-            # Compression can merge a decimal or slash with the text outline.
-            # Retry actual pixels with different margins/resampling; retain
-            # the HP grammar and confidence requirements.
-            cropped = text_crop(health)
-            _, binary = cv2.threshold(cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY),
-                                       170, 255, cv2.THRESH_BINARY)
-            alternatives = self.reader.read([
-                cv2.resize(cropped, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC),
-                cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR),
-                cv2.cvtColor(255-binary, cv2.COLOR_GRAY2BGR)])
-            valid = [row for row in alternatives if hp_fraction(row[0]) is not None]
-            if valid:
-                best = max(valid, key=lambda row: row[1])
-                if best[1] > rows[2][1]:
-                    rows[2] = best
         self.last = {'reason': 'counter_unreadable',
                      'hud': [(text, round(float(score), 3)) for text, score in rows]}
-        text, confidence = rows[0]
-        match = re.fullmatch(r'\s*(\d+)\s*remaining\s*', text, re.IGNORECASE)
-        if match is None or confidence < .7:
+        remaining = _parse_remaining(*rows[0])
+        if remaining is None:
             return None
-        remaining = int(match[1])
         self.last['remaining'] = remaining
         if not 1 <= remaining <= 3:
             self.last['reason'] = 'many_enemies_or_wave_finished'
             return None
-        boss_name, name_confidence = rows[1]
-        boss_name = re.sub(r'\s+is\s+enraged[!\s]*$', '', boss_name,
-                           flags=re.IGNORECASE).strip()
-        hp, hp_confidence = rows[2]
-        if (name_confidence < .7 or hp_confidence < .7 or len(boss_name) < 4
-                or re.search(r'\d.*[/|].*\d', hp) is None):
+        boss_name = _parse_boss_name(*rows[1])
+        if boss_name is None:
             self.last['reason'] = 'boss_header_not_confirmed'
             return None
-        fraction = hp_fraction(hp)
+        header_confirmed, fraction = _parse_hp(*rows[2])
+        if not header_confirmed:
+            self.last['reason'] = 'boss_header_not_confirmed'
+            return None
         if fraction is None or fraction <= 0:
             self.last['reason'] = 'boss_hp_not_alive'
             return None
+        _, y, _, h = gate
         road_top = y + h + round(image.shape[0] * .137)
         details = {}
-        player_y = locate_player(image, road_top)
-        boss_y = locate_boss(image, road_top, details)
+        marker = player_marker(image, road_top)
+        player_y = marker[1] + marker[3] / 2 if marker else None
+        boss_y = locate_boss(image, road_top, details, marker=marker)
         self.last['boss_detection'] = details
         self.last['player_y'] = player_y
         target = ((player_y, boss_y) if player_y is not None and boss_y is not None else None)

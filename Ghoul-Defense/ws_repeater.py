@@ -1,9 +1,14 @@
 """Repeat the user's observed W/S taps using foreground Windows input only."""
 
-import ctypes
-from ctypes import wintypes as w
 import time
 import tkinter as tk
+
+import win_input
+from win_input import KEYBDINPUT as KeyInput, MOUSEINPUT as MouseInput
+from win_input import INPUT_UNION as InputData, INPUT as Input
+
+__all__ = ['KeyInput', 'MouseInput', 'InputData', 'Input', 'Keyboard', 'Playback',
+           'OBSERVED', 'SPEED', 'SEQUENCE', 'main']
 
 
 # Complete observed cycle, from the first W down to the next cycle's W down.
@@ -22,50 +27,22 @@ SEQUENCE = tuple(
 )
 
 
-class KeyInput(ctypes.Structure):
-    _fields_ = [("vk", w.WORD), ("scan", w.WORD), ("flags", w.DWORD),
-                ("time", w.DWORD), ("extra", ctypes.c_size_t)]
-
-
-class MouseInput(ctypes.Structure):
-    _fields_ = [("dx", w.LONG), ("dy", w.LONG), ("data", w.DWORD),
-                ("flags", w.DWORD), ("time", w.DWORD),
-                ("extra", ctypes.c_size_t)]
-
-
-class InputData(ctypes.Union):
-    _fields_ = [("ki", KeyInput), ("mi", MouseInput)]
-
-
-class Input(ctypes.Structure):
-    _fields_ = [("type", w.DWORD), ("data", InputData)]
-
-
 class Keyboard:
     def __init__(self):
-        self.u = ctypes.WinDLL("user32", use_last_error=True)
-        self.u.GetForegroundWindow.restype = w.HWND
-        self.u.GetWindowTextW.argtypes = [w.HWND, w.LPWSTR, ctypes.c_int]
-        self.u.GetClassNameW.argtypes = [w.HWND, w.LPWSTR, ctypes.c_int]
-        self.u.GetAsyncKeyState.argtypes = [ctypes.c_int]
-        self.u.GetAsyncKeyState.restype = w.SHORT
-        self.u.SendInput.argtypes = [w.UINT, ctypes.POINTER(Input), ctypes.c_int]
-        self.u.SendInput.restype = w.UINT
+        self.u = win_input.USER32
 
     def foreground(self):
-        hwnd = self.u.GetForegroundWindow()
-        title, name = ctypes.create_unicode_buffer(512), ctypes.create_unicode_buffer(256)
-        self.u.GetWindowTextW(hwnd, title, len(title))
-        self.u.GetClassNameW(hwnd, name, len(name))
-        return hwnd if (name.value == "WINDOWSCLIENT"
-                        and title.value.lower().startswith("roblox")) else None
+        return win_input.foreground_roblox(user32=self.u)
+
+    def down(self, vk):
+        return win_input.key_down(vk, user32=self.u)
 
     def key(self, key, down):
-        packet = Input(type=1)
-        packet.data.ki = KeyInput(0, {"W": 0x11, "S": 0x1F}[key],
-                                  0x0008 | (0 if down else 0x0002), 0, 0)
-        if self.u.SendInput(1, ctypes.byref(packet), ctypes.sizeof(packet)) != 1:
-            raise OSError("Windows rejected the keyboard input")
+        scan = win_input.SCAN_CODES[{"W": 87, "S": 83}[key]]
+        try:
+            win_input.send_key_scan(scan, down, user32=self.u)
+        except OSError:
+            raise OSError("Windows rejected the keyboard input") from None
 
 
 class Playback:
@@ -143,7 +120,7 @@ def main():
         nonlocal previous
         try:
             pressed = {key for key in (0x76, 0x77, 0x78)
-                       if keyboard.u.GetAsyncKeyState(key) & 0x8000}
+                       if keyboard.down(key)}
             new = pressed - previous
             previous = pressed
             if 0x78 in new:

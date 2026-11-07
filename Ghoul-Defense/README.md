@@ -34,10 +34,16 @@ restore replaced files if applying an update fails.
 
 For friends with an older version that has no `update.bat`, extract the small
 **Ghoul-Defense-update-helper.zip** into their existing Ghoul-Defense folder
-once. It adds only `update.bat` and `updater.py`; then follow the steps above.
+once. It adds `update.bat`, `updater.py`, and the shared `package_layout.py`
+dependency; then follow the steps above.
 New installations already include the online updater. Friends who have the
 older file-picker updater should also copy the new updater-helper ZIP into
 their existing folder once to enable direct GitHub updates.
+
+The refactored updater keeps the newest five safe backup trees after a
+successful update and clears stale staging trees while holding the update lock.
+Linked or inaccessible trees are left alone. The helper's runtime fingerprint
+now covers every runtime module, required reference asset and launcher.
 
 ## Use
 

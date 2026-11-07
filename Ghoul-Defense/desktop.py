@@ -4,59 +4,16 @@ import ctypes
 import time
 from ctypes import wintypes as w
 
-ULONG_PTR = ctypes.c_size_t
+import win_input
+from win_input import ULONG_PTR, MOUSEINPUT, KEYBDINPUT, HARDWAREINPUT, INPUT_UNION, INPUT
 
-
-class MOUSEINPUT(ctypes.Structure):
-    _fields_ = [
-        ("dx", w.LONG),
-        ("dy", w.LONG),
-        ("mouseData", w.DWORD),
-        ("dwFlags", w.DWORD),
-        ("time", w.DWORD),
-        ("dwExtraInfo", ULONG_PTR),
-    ]
-
-
-class KEYBDINPUT(ctypes.Structure):
-    _fields_ = [
-        ("wVk", w.WORD),
-        ("wScan", w.WORD),
-        ("dwFlags", w.DWORD),
-        ("time", w.DWORD),
-        ("dwExtraInfo", ULONG_PTR),
-    ]
-
-
-class HARDWAREINPUT(ctypes.Structure):
-    _fields_ = [("uMsg", w.DWORD), ("wParamL", w.WORD), ("wParamH", w.WORD)]
-
-
-class INPUT_UNION(ctypes.Union):
-    _fields_ = [("mi", MOUSEINPUT), ("ki", KEYBDINPUT), ("hi", HARDWAREINPUT)]
-
-
-class INPUT(ctypes.Structure):
-    _anonymous_ = ("data",)
-    _fields_ = [("type", w.DWORD), ("data", INPUT_UNION)]
+__all__ = ['ULONG_PTR', 'MOUSEINPUT', 'KEYBDINPUT', 'HARDWAREINPUT',
+           'INPUT_UNION', 'INPUT', 'WindowsDesktop']
 
 
 class WindowsDesktop:
     def __init__(self):
-        self.user32 = ctypes.WinDLL("user32", use_last_error=True)
-        u = self.user32
-        u.GetForegroundWindow.restype = w.HWND
-        u.GetClassNameW.argtypes = [w.HWND, w.LPWSTR, ctypes.c_int]
-        u.GetWindowTextW.argtypes = [w.HWND, w.LPWSTR, ctypes.c_int]
-        u.GetClientRect.argtypes = [w.HWND, ctypes.POINTER(w.RECT)]
-        u.ClientToScreen.argtypes = [w.HWND, ctypes.POINTER(w.POINT)]
-        u.IsIconic.argtypes = [w.HWND]
-        u.GetAsyncKeyState.argtypes = [ctypes.c_int]
-        u.GetAsyncKeyState.restype = w.SHORT
-        u.GetCursorPos.argtypes = [ctypes.POINTER(w.POINT)]
-        u.GetCursorPos.restype = w.BOOL
-        u.SendInput.argtypes = [w.UINT, ctypes.POINTER(INPUT), ctypes.c_int]
-        u.SendInput.restype = w.UINT
+        self.user32 = win_input.USER32
 
     def prepare_dpi(self):
         try:
@@ -66,24 +23,7 @@ class WindowsDesktop:
             self.user32.SetProcessDPIAware()
 
     def roblox_window(self):
-        u = self.user32
-        hwnd = u.GetForegroundWindow()
-        if not hwnd or u.IsIconic(hwnd):
-            return None
-        name, title = (
-            ctypes.create_unicode_buffer(256),
-            ctypes.create_unicode_buffer(512),
-        )
-        if not u.GetClassNameW(hwnd, name, len(name)) or not u.GetWindowTextW(
-            hwnd, title, len(title)
-        ):
-            return None
-        return (
-            hwnd
-            if name.value == "WINDOWSCLIENT"
-            and title.value.lower().startswith("roblox")
-            else None
-        )
+        return win_input.foreground_roblox(user32=self.user32)
 
     def client_rect(self, hwnd):
         rect, point = w.RECT(), w.POINT()
@@ -96,25 +36,18 @@ class WindowsDesktop:
         return point.x, point.y, rect.right, rect.bottom
 
     def down(self, key):
-        return bool(self.user32.GetAsyncKeyState(key) & 0x8000)
+        return win_input.key_down(key, user32=self.user32)
 
     def _send(self, packet):
-        if self.user32.SendInput(1, ctypes.byref(packet), ctypes.sizeof(INPUT)) != 1:
-            raise ctypes.WinError(ctypes.get_last_error())
+        win_input.send_input(packet, user32=self.user32)
 
     def key_button(self, vk, down):
-        scans = {32: 0x39, 67: 0x2E, 86: 0x2F, 66: 0x30, 69: 0x12, 70: 0x21, 90: 0x2C}
-        if vk not in scans:
+        if vk not in (32, 67, 86, 66, 69, 70, 90):
             raise ValueError("Unsupported output key")
-        packet = INPUT(type=1)
-        packet.ki.wScan = scans[vk]
-        packet.ki.dwFlags = 8 | (0 if down else 2)
-        self._send(packet)
+        win_input.send_key_scan(win_input.SCAN_CODES[vk], down, sender=self._send)
 
     def mouse_button(self, down, right=False):
-        packet = INPUT(type=0)
-        packet.mi.dwFlags = (8 if down else 16) if right else (2 if down else 4)
-        self._send(packet)
+        win_input.mouse_button(down, right, sender=self._send)
 
     def press_key(self, hwnd, bounds, vk, allowed):
         """Send an owned key press only to the current foreground game."""
@@ -178,20 +111,18 @@ class WindowsDesktop:
                     return False
                 if self.down(1):
                     return False
-                point = w.POINT()
-                if not self.user32.GetCursorPos(ctypes.byref(point)):
-                    raise ctypes.WinError(ctypes.get_last_error())
-                dx, dy = destination_x - point.x, destination_y - point.y
+                cursor_x, cursor_y = win_input.cursor_position(user32=self.user32)
+                dx, dy = destination_x - cursor_x, destination_y - cursor_y
                 if abs(dx) <= 1 and abs(dy) <= 1:
                     break
-                movement = INPUT(type=0)
                 # Cover long distances quickly, retaining fine motion near the
                 # detected control and the final ownership/image checks.
                 stride = 5 if max(abs(dx), abs(dy)) <= 24 else step
-                movement.mi.dx = max(-stride, min(stride, dx))
-                movement.mi.dy = max(-stride, min(stride, dy))
-                movement.mi.dwFlags = 0x0001 | 0x2000
-                self._send(movement)
+                win_input.move_relative(
+                    max(-stride, min(stride, dx)),
+                    max(-stride, min(stride, dy)),
+                    sender=self._send,
+                )
                 time.sleep(interval)
             else:
                 return False

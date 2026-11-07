@@ -1,6 +1,5 @@
 """Use Cyberpunk's stronger choice/retry input profile for UI controls."""
 
-import time
 from dataclasses import dataclass
 import numpy as np
 
@@ -45,16 +44,6 @@ def capture_frame(cap, desktop, hwnd, bounds, allowed):
     if not np.any(image):
         raise CaptureUnavailable("black screenshot")
     return image
-
-
-def wait_for(read, predicate, allowed, timeout=1.2, interval=0.08):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline and allowed():
-        result = read()
-        if allowed() and predicate(result):
-            return result
-        time.sleep(interval)
-    return None
 
 
 def click_control(desktop, hwnd, bounds, x, y, allowed, *, before_click=None):

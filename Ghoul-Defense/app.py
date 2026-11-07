@@ -1,21 +1,20 @@
 """Foreground-only Ghoul Defense perk picker and wave starter."""
 
-import json
-import hashlib
-import logging
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import queue
 import threading
 import time
 import tkinter as tk
 
-from controls import WindowControls, FocusChanged, CaptureUnavailable
+from controls import WindowControls
 from desktop import WindowsDesktop
-from ghoul import Detector, combat_visible
+from detector import Detector
+from ocr import TextReader
 from movement import Movement
 from boss import BossTracker
 from ultimate import UltimatePolicy
+from automation import ScreenWorker
+from components import build_components, configure_logging, build_fingerprint
 
 ROOT = Path(__file__).resolve().parent
 
@@ -82,12 +81,7 @@ def main():
 
     (ROOT / 'work').mkdir(exist_ok=True)
     cv2.setNumThreads(1)
-    logger = logging.getLogger('ghoul')
-    logger.setLevel(logging.INFO)
-    handler = RotatingFileHandler(ROOT / 'macro.log', maxBytes=1_000_000,
-                                  backupCount=2, encoding='utf-8')
-    handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
-    logger.addHandler(handler)
+    logger, handler = configure_logging(ROOT)
     desktop = WindowsDesktop()
     desktop.prepare_dpi()
     root = tk.Tk()
@@ -127,113 +121,14 @@ def main():
     tk.Button(buttons, text='Pause', command=pause, width=12).pack(side='left', padx=5)
 
     def worker():
-        detector = Detector()
-        boss_tracker = BossTracker()
-        ultimate = UltimatePolicy()
-        catalog = Catalog(ROOT / 'catalog')
-        last = None
-        attempted = 0
-        previous_status = None
-        error_at = 0
-        last_boss = None
-        last_movement_gate = None
-        boss_logged_at = 0
+        components = build_components(ROOT, reader_factory=TextReader,
+                                      detector_factory=Detector, tracker_factory=BossTracker,
+                                      ultimate_factory=UltimatePolicy, catalog_factory=Catalog)
+        engine = ScreenWorker(ROOT, desktop, motion, running, stopping, report, logger,
+                              components, perform=perform, attempt_ultimate=attempt_ultimate,
+                              controls_factory=WindowControls)
         with mss.MSS() as capture:
-            while not stopping.is_set():
-                if not running.wait(.1):
-                    last = None
-                    continue
-                if stopping.is_set():
-                    break
-                try:
-                    hwnd = desktop.roblox_window()
-                    if not hwnd:
-                        motion.stop()
-                        ultimate.reset()
-                        boss_tracker.reset()
-                        message = 'Waiting for Roblox in the foreground'
-                        last = None
-                    else:
-                        bounds = desktop.client_rect(hwnd)
-                        context = WindowControls(desktop, capture, hwnd, bounds,
-                                                 lambda: running.is_set() and not stopping.is_set())
-                        image = context.read()
-                        decision = detector.read(image)
-                        if decision is None:
-                            combat = combat_visible(image)
-                            boss = boss_tracker.read(image) if combat else None
-                            target = boss.target if boss is not None else None
-                            movement_gate = (combat, boss is not None, target is not None)
-                            if movement_gate != last_movement_gate:
-                                logger.info('movement_gate combat=%s boss=%s target=%s',
-                                            *movement_gate)
-                                last_movement_gate = movement_gate
-                            motion.observe(hwnd, combat and (boss is None or target is not None),
-                                           time.monotonic(), boss=target)
-                            if attempt_ultimate(context, detector, boss_tracker, ultimate,
-                                                boss, time.monotonic()):
-                                logger.info('ultimate_f_sent window=%s boss=%s', hwnd, boss.name)
-                            if combat and time.monotonic() - boss_logged_at > 3:
-                                logger.info('boss_scan %s', json.dumps(boss_tracker.last,
-                                                                       ensure_ascii=True))
-                                boss_logged_at = time.monotonic()
-                            message = ('Waiting for the combat HUD — movement stopped' if not combat
-                                       else 'Following ' + boss.name + ' lane' if target is not None
-                                       else 'Boss detected — checking its lane' if boss is not None
-                                       else 'W/S patrol — watching for choices and Start Wave')
-                            mode = ((boss.name, boss.remaining,
-                                     tuple(round(y / 12) for y in target) if target else None)
-                                    if boss is not None else None)
-                            if mode != last_boss:
-                                logger.info('boss_tracking %s', json.dumps({
-                                    'name': boss.name if boss else None,
-                                    'remaining': boss.remaining if boss else None,
-                                    'target': target, 'window': int(hwnd)}))
-                                if boss is not None and target is None:
-                                    path = ROOT / 'work/boss_lane_unclear.png'
-                                    cv2.imwrite(str(path), image)
-                                    logger.info('boss_lane_capture %s', path)
-                                last_boss = mode
-                            last = None
-                        else:
-                            motion.stop()
-                            last_movement_gate = None
-                            ultimate.reset()
-                            boss_tracker.reset()
-                            for path in catalog.save(image, decision):
-                                logger.info('catalog_saved %s', path)
-                            identity = (hwnd, decision.signature)
-                            now = time.monotonic()
-                            message = ('Playing again' if decision.kind == 'replay'
-                                       else 'Starting next wave' if decision.kind == 'wave'
-                                       else 'Choosing ' + decision.name)
-                            if identity != last or now - attempted >= 1.5:
-                                accepted = perform(context, detector, decision)
-                                last, attempted = identity, time.monotonic()
-                                logger.info('action %s', json.dumps({
-                                    'kind': decision.kind, 'chosen': decision.name,
-                                    'offered': decision.names, 'target': decision.target,
-                                    'accepted': bool(accepted), 'window': int(hwnd)}))
-                                if not accepted:
-                                    message = 'Screen changed — checking again'
-                    if message != previous_status:
-                        report(message)
-                        previous_status = message
-                except (FocusChanged, CaptureUnavailable):
-                    motion.stop()
-                    ultimate.reset()
-                    boss_tracker.reset()
-                    last = None
-                except Exception as exc:
-                    motion.stop()
-                    ultimate.reset()
-                    report('Error: ' + str(exc))
-                    now = time.monotonic()
-                    if now - error_at > 10:
-                        logger.exception('Worker error')
-                        error_at = now
-                    stopping.wait(.5)
-                stopping.wait(.12)
+            engine.run(capture)
 
     def movement_worker():
         try:
@@ -253,9 +148,10 @@ def main():
     thread = threading.Thread(target=worker, name='ghoul-screen-worker', daemon=True)
     thread.start()
     previous_keys = set()
+    poll_id = None
 
     def poll():
-        nonlocal previous_keys
+        nonlocal previous_keys, poll_id
         pressed = {key for key in (0x77,) if desktop.down(key)}
         new = pressed - previous_keys
         previous_keys = pressed
@@ -271,7 +167,7 @@ def main():
                     status.set(text)
             except queue.Empty:
                 break
-        root.after(40, poll)
+        poll_id = root.after(40, poll)
 
     def close():
         running.clear()
@@ -280,8 +176,7 @@ def main():
         root.destroy()
 
     root.protocol('WM_DELETE_WINDOW', close)
-    build = hashlib.sha256(b''.join((ROOT / name).read_bytes() for name in
-        ('app.py', 'boss.py', 'ghoul.py', 'movement.py', 'ultimate.py'))).hexdigest()[:12]
+    build = build_fingerprint(ROOT)
     logger.info('Started paused build=%s; screenshot-only detection; no game memory access', build)
     poll()
     try:
@@ -290,8 +185,14 @@ def main():
         running.clear()
         stopping.set()
         motion.stop()
+        if poll_id is not None:
+            try:
+                root.after_cancel(poll_id)
+            except tk.TclError:
+                pass
         thread.join(timeout=2)
         movement_thread.join(timeout=2)
+        logger.removeHandler(handler)
         handler.close()
 
 

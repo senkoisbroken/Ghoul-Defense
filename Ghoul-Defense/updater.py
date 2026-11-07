@@ -20,12 +20,8 @@ import uuid
 import zipfile
 import zlib
 
-ROOT_FILES = frozenset({
-    'app.py', 'boss.py', 'catalog.py', 'controls.py', 'desktop.py', 'ghoul.py',
-    'movement.py', 'ultimate.py', 'ws_repeater.py', 'updater.py',
-    'start.bat', 'install.bat', 'update.bat', 'requirements.txt', 'README.md',
-    'INSTALL.txt', 'package_info.json',
-})
+from package_layout import ROOT_FILES as ROOT_FILES, is_allowed
+
 REPOSITORY = 'senkoisbroken/Ghoul-Defense'
 RELEASE_API = 'https://api.github.com/repos/'+REPOSITORY+'/releases/latest'
 ZIP_NAME = 'Ghoul-Defense-friend.zip'
@@ -103,20 +99,7 @@ def update_latest(install_dir):
 
 
 def safe_name(name):
-    parts = PurePosixPath(name).parts
-    if (not parts or str(PurePosixPath(name)) != name or '\\' in name or name.startswith('/')
-            or any(part in ('.', '..') or not re.fullmatch(r'[A-Za-z0-9_.-]+', part)
-                   for part in parts)):
-        return False
-    reserved = {'CON', 'PRN', 'AUX', 'NUL'} | {
-        prefix+str(i) for prefix in ('COM', 'LPT') for i in range(1, 10)}
-    if any(part.endswith('.') or part.split('.')[0].upper() in reserved for part in parts):
-        return False
-    return (name in ROOT_FILES
-            or len(parts) == 1 and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*\.py', name) is not None
-            or len(parts) == 2 and parts[0] == 'assets' and parts[1].endswith('.png')
-            or len(parts) == 3 and parts[0] == 'catalog'
-            and parts[1] in ('perks', 'relics') and parts[2].endswith('.png'))
+    return is_allowed(name)
 
 
 def read_package(path):
@@ -233,7 +216,78 @@ def update_zip(zip_path, install_dir):
         raise UpdateError('The installation folder does not exist.')
     ensure_macro_closed(root)
     with update_lock(root):
+        ensure_macro_closed(root)
+        cleanup_updates(root)
         return apply_files(files, build, root)
+
+
+def _plain_directory(path):
+    """Do not traverse symlinks or Windows reparse points (including junctions)."""
+    info = path.lstat()
+    return (stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+            and not getattr(info, 'st_file_attributes', 0)
+            & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0x400))
+
+
+def _remove_update_tree(path, updates):
+    """Remove only direct update children whose entire tree stays in .updates."""
+    if path.parent != updates or not _plain_directory(path):
+        return
+    pending = [path]
+    while pending:
+        directory = pending.pop()
+        if not directory.resolve().is_relative_to(updates):
+            return
+        for child in directory.iterdir():
+            info = child.lstat()
+            if (stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0)
+                    & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0x400)):
+                return
+            if stat.S_ISDIR(info.st_mode):
+                pending.append(child)
+    shutil.rmtree(path)
+
+
+def cleanup_updates(root, current_backup=None):
+    """Best-effort housekeeping while holding update_lock; prune only on success.
+
+    Without a current backup, clear crashed staging directories only. Supplying
+    the successfully created backup also keeps the newest five backups, always
+    reserving one slot for that current backup regardless of its timestamp.
+    """
+    try:
+        root = Path(root).resolve()
+        updates = root / '.updates'
+        if not _plain_directory(updates) or updates.resolve() != updates:
+            return
+        backups = []
+        for path in updates.iterdir():
+            try:
+                if not _plain_directory(path):
+                    continue
+                if path.name.startswith('staging-'):
+                    _remove_update_tree(path, updates)
+                elif path.name.startswith('backup-'):
+                    backups.append(path)
+            except OSError:
+                continue
+        if current_backup is None:
+            return
+        current_backup = Path(current_backup).resolve()
+        backups.sort(key=lambda path: (path.stat().st_mtime_ns, path.name), reverse=True)
+        retained = {current_backup}
+        for path in backups:
+            if len(retained) < 5:
+                retained.add(path)
+        for path in backups:
+            if path not in retained:
+                try:
+                    _remove_update_tree(path, updates)
+                except OSError:
+                    pass
+    except (OSError, RuntimeError):
+        # Housekeeping never invalidates an otherwise successful update.
+        pass
 
 
 def apply_files(files, build, root):
@@ -296,6 +350,7 @@ def apply_files(files, build, root):
                 stage.rmdir()
             except OSError:
                 pass
+    cleanup_updates(root, current_backup=backup)
     return {'updated': True, 'build': build, 'backup': str(backup)}
 
 
