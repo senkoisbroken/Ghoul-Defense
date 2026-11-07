@@ -1,0 +1,10 @@
+Extract the ZIP completely. Double-click start.bat.
+First setup needs internet and 64-bit Windows. Python 3.13 and packages are installed automatically if needed.
+Open Ghoul Defense in Roblox, focus it, then press F8. F8 starts/pauses the whole helper.
+Close any standalone W/S repeater first.
+Optional: install.bat performs setup without launching the helper.
+To update: close the helper and run update.bat. It downloads the latest GitHub release automatically. Then open start.bat.
+No GitHub account, token, or GitHub CLI is required. For offline updates, drag a friend ZIP onto update.bat.
+Updates keep your .venv, logs, and existing saved card pictures. Old files are backed up under .updates.
+Older copies without update.bat: extract Ghoul-Defense-update-helper.zip into the existing folder once.
+See README.md for controls, saved pictures and troubleshooting.

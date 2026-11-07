@@ -1,0 +1,8 @@
+**/.venv/
+**/.updates/
+**/__pycache__/
+**/work/
+**/tests/
+**/*.log*
+**/.env*
+*.zip
