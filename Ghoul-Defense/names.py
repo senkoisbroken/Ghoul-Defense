@@ -10,7 +10,7 @@ NAMES = (
     'Gate Mastery', 'RC Mastery', 'Supply Mastery', 'Field Repairs',
     'Quick Hands', 'Spare Quinque', 'Big Bang', 'Incendiary Mines',
     'Thunder Lock', 'Napalm Core', 'Splinter Bolts', 'Chain Bolts',
-    'Cluster Grenade', 'Twin Strike', 'Tar Road', 'Shock Net',
+    'Cluster Grenade', 'Twin Strike', 'Twin Scythes', 'Tar Road', 'Shock Net',
     'Kakuja Core', "Takizawa's Grin", 'Dragon Scale', "Big Madam's Pearls",
     "Gourmet's Recipe", 'Black Rabbit Wing', "Rabbit's Mask", "Tatara's Ember",
 )
@@ -31,7 +31,7 @@ def canonical(text):
 
 def priority(name):
     order = (
-        'Damage Mastery', 'Signature Mastery', 'Overcharge',
+        'Twin Scythes', 'Damage Mastery', 'Signature Mastery', 'Overcharge',
         'Black Rabbit Wing', 'Kakuja Core',
         'Speed Mastery', 'Rapid Fire', "Rabbit's Mask",
         'Overclocked Turrets', 'Turret Mastery', 'Trap Mastery', "Tatara's Ember",

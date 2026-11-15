@@ -7,7 +7,7 @@ input. It does not read Roblox memory or inject code.
 
 - **F8** starts or pauses movement, menu choices and wave automation together.
 - Patrol repeats six W taps followed by six S taps at the existing 1.2x timing.
-- Choices prioritize damage, attack speed and turret buffs; other offers use
+- Choices prioritize Twin Scythes, damage, attack speed and turret buffs; other offers use
   the first available card. One-, two- and three-card menus are supported.
 - With 1–3 remaining enemies and a confirmed living boss, movement follows its
   visible lane. An unclear boss position holds movement while recognition retries.

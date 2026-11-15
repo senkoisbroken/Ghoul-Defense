@@ -97,7 +97,7 @@ def main():
     preview_window = None
     uploading = False
     tk.Label(root, text='Ghoul Defense', font=('Segoe UI', 15, 'bold'), pady=10).pack()
-    tk.Label(root, text='Damage → attack speed → turret buffs\nOtherwise: first available choice',
+    tk.Label(root, text='Twin Scythes → damage → attack speed → turret buffs\nOtherwise: first available choice',
              padx=25, pady=5).pack()
     tk.Label(root, text='F8 start / pause').pack()
     tk.Label(root, text='Built-in W/S spam · same 1.2× repeater timing').pack()
