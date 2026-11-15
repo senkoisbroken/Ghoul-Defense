@@ -61,17 +61,12 @@ update or very small/portrait window. Lane following remains screen-dependent.
 fingerprint, action decisions, movement gates and boss diagnostics.
 `work/boss_lane_unclear.png` holds the latest unclear boss frame.
 
-Optional diagnostic sharing sends selected macro status and action events to the
-macro owner's AWS receiver. Enable it with the checkbox and enter the private
-pairing code supplied by the owner. The code is encrypted for the current Windows
-user. Uncheck the box to stop sharing and remove the saved code. The uploader
-does not send screenshots, user paths, or full local log files. AWS retains the
-received events for 14 days.
-
-The diagnostics status shows whether delivery is connected or retrying, and the
-number of events sent, waiting, or dropped. The uploader retries while the macro
-is open, but its queue is bounded and exists only in memory. Events can be lost
-if it fills or the macro closes; the local log remains available for diagnosis.
+Use **Send diagnostic logs** to review a sanitized copy of the latest 32 KiB
+of `macro.log`, then choose whether to send it to the macro owner's AWS receiver.
+The preview can still contain private information: review it before sending.
+The upload excludes screenshots and rotated log backups. The owner supplies the
+pairing code; received records are retained for 14 days. Keep the macro open until
+it reports success. No logs are sent automatically.
 
 ## Module map
 

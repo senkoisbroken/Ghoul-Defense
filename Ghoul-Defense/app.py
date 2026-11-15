@@ -15,7 +15,8 @@ from boss import BossTracker
 from ultimate import UltimatePolicy
 from automation import ScreenWorker
 from components import build_components, configure_logging, build_fingerprint
-from remote_logging import ENDPOINT, RemoteLoggingHandler, forget_token, load_token, save_token
+from diagnostic_upload import snapshot_lines, send_snapshot
+from remote_logging import load_token
 
 ROOT = Path(__file__).resolve().parent
 
@@ -92,69 +93,47 @@ def main():
     motion = Movement()
     messages = queue.Queue(maxsize=20)
     status = tk.StringVar(value='Paused — F8 starts')
-    remote_handler = None
-    remote_checks = queue.SimpleQueue()
-    candidates = set()
-    candidates_lock = threading.Lock()
-    sharing_status = tk.StringVar(value='Diagnostics: off')
+    upload_results = queue.SimpleQueue()
+    sharing_status = tk.StringVar(value='Diagnostic log: not sent')
     tk.Label(root, text='Ghoul Defense', font=('Segoe UI', 15, 'bold'), pady=10).pack()
     tk.Label(root, text='Damage → attack speed → turret buffs\nOtherwise: first available choice',
              padx=25, pady=5).pack()
     tk.Label(root, text='F8 start / pause').pack()
     tk.Label(root, text='Built-in W/S spam · same 1.2× repeater timing').pack()
-    sharing = tk.BooleanVar(value=False)
-
-    def toggle_sharing(reuse_saved=False):
-        nonlocal remote_handler
-        if not sharing.get():
-            if remote_handler is not None:
-                logger.removeHandler(remote_handler)
-                remote_handler.close()
-                remote_handler = None
-            try:
-                forget_token(ROOT)
-            except OSError:
-                status.set('Could not clear saved diagnostic settings')
-            sharing_status.set('Diagnostics: off')
-            return
-        from tkinter import simpledialog
-        token = load_token(ROOT) if reuse_saved else None
+    def prepare_upload():
+        from tkinter import messagebox, simpledialog, scrolledtext
+        token = load_token(ROOT)
         if token is None:
-            token = simpledialog.askstring('Share diagnostics',
-                'Enter the private diagnostic pairing code from the macro owner.',
-                show='*', parent=root)
+            token = simpledialog.askstring('Send diagnostic log',
+                'Enter the private pairing code from the macro owner.', show='*', parent=root)
         if not token:
-            sharing.set(False)
             return
         try:
-            candidate = RemoteLoggingHandler(ENDPOINT, token)
-        except (OSError, ValueError) as error:
-            sharing.set(False)
-            status.set('Diagnostic sharing setup failed: ' + str(error))
+            lines = snapshot_lines(ROOT, token)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror('Diagnostic log', str(exc), parent=root)
             return
-
-        with candidates_lock:
-            candidates.add(candidate)
-        sharing_button.config(state='disabled')
-        sharing_status.set('Diagnostics: checking connection…')
-
-        def verify_sharing():
-            try:
-                accepted = candidate.verify()
-            except Exception:
-                accepted = False
-            with candidates_lock:
-                if stopping.is_set():
-                    candidates.discard(candidate)
-                    candidate.close()
-                else:
-                    remote_checks.put((candidate, token, accepted))
-
-        threading.Thread(target=verify_sharing, name='diagnostics-check', daemon=True).start()
-
-    sharing_button = tk.Checkbutton(root, text='Share diagnostic events with the macro owner',
-                                    variable=sharing, command=toggle_sharing)
-    sharing_button.pack()
+        preview = tk.Toplevel(root)
+        preview.title('Review diagnostic log before sending')
+        tk.Label(preview, text='Review this recent, partially sanitized log. It will be sent to the macro owner and retained on AWS for 14 days.', wraplength=600).pack(padx=10, pady=8)
+        text = scrolledtext.ScrolledText(preview, width=90, height=24, wrap='word')
+        text.pack(padx=10, pady=5)
+        text.insert('1.0', ''.join(lines))
+        text.config(state='disabled')
+        def send():
+            preview.destroy()
+            upload_button.config(state='disabled')
+            sharing_status.set('Diagnostic log: sending... Keep this window open.')
+            def run_upload():
+                try:
+                    result = send_snapshot(ROOT, token, lines)
+                except Exception:
+                    result = (False, 'Upload failed unexpectedly. Please try again.')
+                upload_results.put(result)
+            threading.Thread(target=run_upload, name='diagnostic-upload', daemon=True).start()
+        tk.Button(preview, text='Send this log', command=send).pack(pady=8)
+    upload_button = tk.Button(root, text='Send diagnostic logs...', command=prepare_upload)
+    upload_button.pack()
     tk.Label(root, textvariable=sharing_status, wraplength=430).pack()
     tk.Label(root, textvariable=status, wraplength=430, padx=20, pady=12).pack()
 
@@ -211,31 +190,11 @@ def main():
     poll_id = None
 
     def poll():
-        nonlocal previous_keys, poll_id, remote_handler
-        while not remote_checks.empty():
-            candidate, token, accepted = remote_checks.get_nowait()
-            with candidates_lock:
-                candidates.discard(candidate)
-            sharing_button.config(state='normal')
-            if accepted:
-                try:
-                    save_token(ROOT, token)
-                    remote_handler = candidate
-                    logger.addHandler(remote_handler)
-                    sharing_status.set('Diagnostics: connected')
-                    logger.info('Started paused build=%s; screenshot-only detection; no game memory access', build_fingerprint(ROOT))
-                except OSError:
-                    candidate.close()
-                    sharing.set(False)
-                    sharing_status.set('Diagnostics: could not save settings')
-            else:
-                candidate.close()
-                sharing.set(False)
-                sharing_status.set('Diagnostics: connection failed; check code and internet')
-        if remote_handler is not None:
-            health = remote_handler.health()
-            sharing_status.set('Diagnostics: %s; sent %s, queued %s, dropped %s' %
-                               (health['state'], health['sent'], health['queued'], health['dropped']))
+        nonlocal previous_keys, poll_id
+        while not upload_results.empty():
+            accepted, detail = upload_results.get_nowait()
+            upload_button.config(state='normal')
+            sharing_status.set(detail)
         pressed = {key for key in (0x77,) if desktop.down(key)}
         new = pressed - previous_keys
         previous_keys = pressed
@@ -256,18 +215,10 @@ def main():
     def close():
         running.clear()
         stopping.set()
-        with candidates_lock:
-            pending_candidates = list(candidates)
-            candidates.clear()
-        for candidate in pending_candidates:
-            candidate.close()
         motion.stop()
         root.destroy()
 
     root.protocol('WM_DELETE_WINDOW', close)
-    if load_token(ROOT):
-        sharing.set(True)
-        toggle_sharing(reuse_saved=True)
     build = build_fingerprint(ROOT)
     logger.info('Started paused build=%s; screenshot-only detection; no game memory access', build)
     poll()
@@ -284,9 +235,6 @@ def main():
                 pass
         thread.join(timeout=2)
         movement_thread.join(timeout=2)
-        if remote_handler is not None:
-            logger.removeHandler(remote_handler)
-            remote_handler.close()
         logger.removeHandler(handler)
         handler.close()
 
