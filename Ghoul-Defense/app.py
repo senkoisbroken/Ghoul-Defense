@@ -93,6 +93,7 @@ def main():
     messages = queue.Queue(maxsize=20)
     status = tk.StringVar(value='Paused — F8 starts')
     remote_handler = None
+    remote_checks = queue.SimpleQueue()
     tk.Label(root, text='Ghoul Defense', font=('Segoe UI', 15, 'bold'), pady=10).pack()
     tk.Label(root, text='Damage → attack speed → turret buffs\nOtherwise: first available choice',
              padx=25, pady=5).pack()
@@ -100,7 +101,7 @@ def main():
     tk.Label(root, text='Built-in W/S spam · same 1.2× repeater timing').pack()
     sharing = tk.BooleanVar(value=False)
 
-    def toggle_sharing():
+    def toggle_sharing(reuse_saved=False):
         nonlocal remote_handler
         if not sharing.get():
             if remote_handler is not None:
@@ -113,7 +114,7 @@ def main():
                 status.set('Could not clear saved diagnostic settings')
             return
         from tkinter import simpledialog
-        token = load_token(ROOT)
+        token = load_token(ROOT) if reuse_saved else None
         if token is None:
             token = simpledialog.askstring('Share diagnostics',
                 'Enter the private diagnostic pairing code from the macro owner.',
@@ -122,19 +123,27 @@ def main():
             sharing.set(False)
             return
         try:
-            remote_handler = RemoteLoggingHandler(ENDPOINT, token)
-            save_token(ROOT, token)
-            logger.addHandler(remote_handler)
-            status.set('Diagnostic sharing enabled')
+            candidate = RemoteLoggingHandler(ENDPOINT, token)
         except (OSError, ValueError) as error:
-            if remote_handler is not None:
-                remote_handler.close()
-                remote_handler = None
             sharing.set(False)
             status.set('Diagnostic sharing setup failed: ' + str(error))
+            return
 
-    tk.Checkbutton(root, text='Share diagnostic events with the macro owner',
-                   variable=sharing, command=toggle_sharing).pack()
+        sharing_button.config(state='disabled')
+        status.set('Checking diagnostic connection…')
+
+        def verify_sharing():
+            accepted = candidate.verify()
+            if stopping.is_set():
+                candidate.close()
+                return
+            remote_checks.put((candidate, token, accepted))
+
+        threading.Thread(target=verify_sharing, name='diagnostics-check', daemon=True).start()
+
+    sharing_button = tk.Checkbutton(root, text='Share diagnostic events with the macro owner',
+                                    variable=sharing, command=toggle_sharing)
+    sharing_button.pack()
     tk.Label(root, textvariable=status, wraplength=430, padx=20, pady=12).pack()
 
     def report(message):
@@ -190,7 +199,24 @@ def main():
     poll_id = None
 
     def poll():
-        nonlocal previous_keys, poll_id
+        nonlocal previous_keys, poll_id, remote_handler
+        while not remote_checks.empty():
+            candidate, token, accepted = remote_checks.get_nowait()
+            sharing_button.config(state='normal')
+            if accepted:
+                try:
+                    save_token(ROOT, token)
+                    remote_handler = candidate
+                    logger.addHandler(remote_handler)
+                    status.set('Diagnostic sharing connected')
+                except OSError:
+                    candidate.close()
+                    sharing.set(False)
+                    status.set('Could not save diagnostic settings')
+            else:
+                candidate.close()
+                sharing.set(False)
+                status.set('Diagnostic connection failed. Check the pairing code and internet.')
         pressed = {key for key in (0x77,) if desktop.down(key)}
         new = pressed - previous_keys
         previous_keys = pressed
@@ -217,7 +243,7 @@ def main():
     root.protocol('WM_DELETE_WINDOW', close)
     if load_token(ROOT):
         sharing.set(True)
-        toggle_sharing()
+        toggle_sharing(reuse_saved=True)
     build = build_fingerprint(ROOT)
     logger.info('Started paused build=%s; screenshot-only detection; no game memory access', build)
     poll()

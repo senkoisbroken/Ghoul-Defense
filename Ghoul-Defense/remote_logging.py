@@ -1,6 +1,7 @@
 """Opt-in, bounded remote diagnostics without blocking game automation."""
 
 import json
+import http.client
 import logging
 import base64
 import ctypes
@@ -80,6 +81,21 @@ class RemoteLoggingHandler(logging.Handler):
         self.worker = threading.Thread(target=self._run, name='remote-diagnostics', daemon=True)
         self.worker.start()
 
+    def verify(self):
+        """Confirm the receiver accepts this pairing code."""
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *args, **kwargs):
+                return None
+
+        body = json.dumps({'client_id': self.client_id, 'lines': ['connection_check']}).encode('utf-8')
+        request = urllib.request.Request(self.endpoint, body,
+            {'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json'}, method='POST')
+        try:
+            with urllib.request.build_opener(NoRedirect).open(request, timeout=5) as response:
+                return response.status == 200 and json.loads(response.read(1024)).get('ok') is True
+        except (OSError, ValueError, AttributeError, http.client.HTTPException, urllib.error.URLError):
+            return False
+
     def emit(self, record):
         try:
             message = record.getMessage()
@@ -125,7 +141,7 @@ class RemoteLoggingHandler(logging.Handler):
             try:
                 with opener.open(request, timeout=5) as response:
                     response.read(1024)
-            except (OSError, urllib.error.URLError):
+            except (OSError, http.client.HTTPException, urllib.error.URLError):
                 # The local log remains the source of truth if the network fails.
                 pass
 
