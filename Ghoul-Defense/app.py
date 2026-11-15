@@ -95,12 +95,28 @@ def main():
     status = tk.StringVar(value='Paused — F8 starts')
     upload_results = queue.SimpleQueue()
     sharing_status = tk.StringVar(value='Diagnostic log: not sent')
+    preview_window = None
+    uploading = False
     tk.Label(root, text='Ghoul Defense', font=('Segoe UI', 15, 'bold'), pady=10).pack()
     tk.Label(root, text='Damage → attack speed → turret buffs\nOtherwise: first available choice',
              padx=25, pady=5).pack()
     tk.Label(root, text='F8 start / pause').pack()
     tk.Label(root, text='Built-in W/S spam · same 1.2× repeater timing').pack()
     def prepare_upload():
+        nonlocal preview_window
+        if uploading:
+            sharing_status.set('Diagnostic log: an upload is already running.')
+            return
+        if preview_window is not None:
+            try:
+                still_open = preview_window.winfo_exists()
+            except tk.TclError:
+                still_open = False
+            if still_open:
+                preview_window.lift()
+                preview_window.focus_set()
+                return
+            preview_window = None
         from tkinter import messagebox, simpledialog, scrolledtext
         token = load_token(ROOT)
         if token is None:
@@ -114,23 +130,44 @@ def main():
             messagebox.showerror('Diagnostic log', str(exc), parent=root)
             return
         preview = tk.Toplevel(root)
+        preview_window = preview
         preview.title('Review diagnostic log before sending')
         tk.Label(preview, text='Review this recent, partially sanitized log. It will be sent to the macro owner and retained on AWS for 14 days.', wraplength=600).pack(padx=10, pady=8)
         text = scrolledtext.ScrolledText(preview, width=90, height=24, wrap='word')
         text.pack(padx=10, pady=5)
         text.insert('1.0', ''.join(lines))
         text.config(state='disabled')
-        def send():
+
+        def close_preview():
+            nonlocal preview_window
+            if preview_window is preview:
+                preview_window = None
             preview.destroy()
+
+        def send():
+            nonlocal preview_window, uploading
+            if uploading:
+                return
+            uploading = True
+            close_preview()
             upload_button.config(state='disabled')
             sharing_status.set('Diagnostic log: sending... Keep this window open.')
+
+            def progress(message):
+                upload_results.put(('progress', message))
+
             def run_upload():
                 try:
-                    result = send_snapshot(ROOT, token, lines)
+                    result = send_snapshot(ROOT, token, lines,
+                                           progress=progress,
+                                           cancelled=stopping.is_set)
                 except Exception:
                     result = (False, 'Upload failed unexpectedly. Please try again.')
-                upload_results.put(result)
+                upload_results.put(('result', result))
+
             threading.Thread(target=run_upload, name='diagnostic-upload', daemon=True).start()
+
+        preview.protocol('WM_DELETE_WINDOW', close_preview)
         tk.Button(preview, text='Send this log', command=send).pack(pady=8)
     upload_button = tk.Button(root, text='Send diagnostic logs...', command=prepare_upload)
     upload_button.pack()
@@ -190,9 +227,14 @@ def main():
     poll_id = None
 
     def poll():
-        nonlocal previous_keys, poll_id
+        nonlocal previous_keys, poll_id, uploading
         while not upload_results.empty():
-            accepted, detail = upload_results.get_nowait()
+            kind, payload = upload_results.get_nowait()
+            if kind == 'progress':
+                sharing_status.set(payload)
+                continue
+            accepted, detail = payload
+            uploading = False
             upload_button.config(state='normal')
             sharing_status.set(detail)
         pressed = {key for key in (0x77,) if desktop.down(key)}

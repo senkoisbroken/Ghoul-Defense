@@ -1,12 +1,12 @@
 {
   "name": "Ghoul Defense",
-  "source_build": "a22466111f65",
-  "created_utc": "2026-11-15T00:54:30.232704+00:00",
+  "source_build": "104e0d1e51dd",
+  "created_utc": "2026-11-15T01:07:05.283160+00:00",
   "python": "3.13 (64-bit)",
   "downloaded_python": "3.13.17",
   "catalog_images": 42,
   "sha256": {
-    "app.py": "81cbc7eccb53fecf86b98e8060ef89796198a3970a79f761e06986f7a60a8970",
+    "app.py": "800a7401a35b97817668624f1f714f1a670b11690ffad0bdc92756bf04b11f65",
     "automation.py": "b0f0aa0b2d4b228c4f83115434807495e205f274aa6002903b86297dfbbd115e",
     "boss.py": "5d9afabf6f41c84cf92490bf82e753fc6fd65b43ca56cd36ba44e2a22fd10d31",
     "catalog.py": "5262243c34d12e779a7d230669cd27671209dbfbf9784494c33ca980c1097f2a",
@@ -14,7 +14,7 @@
     "controls.py": "fc6fa6d0b5e9314faf63ecaf38cb64e814f1d5b96d7a581519479f23271265ec",
     "desktop.py": "cbf176a98bb95f863bcea6a4b58e9c977b985ee31dd578f18809604bab51921c",
     "detector.py": "7b6e22666f35d8816bbddf10ce20399783fb01a2da257ea225d70d6f7a4b2365",
-    "diagnostic_upload.py": "80c0beefe76713bf0018f2f7f513e262b92f4f3070ec6bfb8f327688aabca353",
+    "diagnostic_upload.py": "44f09a291ba24cf3f71e2cd38e0a20b755867c8c14b1ec15d1ffdf73364c909b",
     "frame.py": "f5368b30aa4a718b68ce2639043ea5a63de6dfa1a7716c0dd5122955d97332ca",
     "gate.py": "598f3c035704e73031bfc34d2187649224f85dfa6662baa91df979faddbc2476",
     "ghoul.py": "e01607e6de7144fdb23bbd2ee38ce19ed0aca1e950c7a36ca53ab1254f68b687",
@@ -83,5 +83,5 @@
     "catalog/relics/tatarasember.png": "c4a686db4868e6271b353f694efdd765aab6c3c00c6426f8b25a6cf4365ccd38",
     "catalog/relics/trapmastery.png": "63b2eaf8131754a40bb3a29f9a9bd1f63f479608a9124c04e291d6e9d1ce4884"
   },
-  "package_version": "c1f1fbce4ecd"
+  "package_version": "e19301d76df9"
 }
