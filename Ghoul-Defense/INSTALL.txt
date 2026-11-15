@@ -4,7 +4,7 @@ Open Ghoul Defense in Roblox, focus it, then press F8. F8 starts/pauses the whol
 Close any standalone W/S repeater first.
 Optional: install.bat performs setup without launching the helper.
 To update: close the helper and run update.bat. It downloads the latest GitHub release automatically. Then open start.bat.
-No GitHub account, token, or GitHub CLI is required. For offline updates, drag a friend ZIP onto update.bat.
+No GitHub account, token, or GitHub CLI is required. For offline updates, drag a distribution ZIP onto update.bat.
 Updates keep your .venv, logs, and existing saved card pictures. Old files are backed up under .updates.
 Older copies without update.bat: extract Ghoul-Defense-update-helper.zip into the existing folder once.
 See README.md for controls, saved pictures and troubleshooting.

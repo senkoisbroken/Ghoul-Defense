@@ -23,17 +23,17 @@ input. It does not read Roblox memory or inject code.
 This development folder's `start.bat` uses the existing interpreter at
 `E:\omniroute\Guess-The-Card-portable\.venv\Scripts\pythonw.exe` and installs nothing.
 
-The separately distributed friend package has portable `start.bat`, `install.bat`
+The distribution package has portable `start.bat`, `install.bat`
 and `update.bat` launchers. Its first setup installs 64-bit Python 3.13 and pinned
 packages if needed. `install.bat` runs setup/repair without starting the helper.
 Normal starts reuse the environment; changed requirements trigger package setup.
 
-## Friend updates
+## Updates
 
 The published distribution is at https://github.com/senkoisbroken/Ghoul-Defense.
-Friends close the helper and run `update.bat`; it downloads the newest published
+Close the helper and run `update.bat`; it downloads the newest published
 release anonymously and verifies SHA-256 checksums and package hashes.
-`update.bat --local` or dropping a friend ZIP onto the launcher supports offline
+`update.bat --local` or dropping a distribution ZIP onto the launcher supports offline
 updates. Older installations need the current updater-helper ZIP copied into
 their existing folder once.
 

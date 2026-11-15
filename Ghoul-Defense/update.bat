@@ -2,7 +2,7 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 if not exist "updater.py" (
-    echo updater.py is missing. Extract the complete friend package first.
+    echo updater.py is missing. Extract the complete distribution package first.
     pause
     exit /b 1
 )

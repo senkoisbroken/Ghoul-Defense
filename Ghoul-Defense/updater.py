@@ -1,4 +1,4 @@
-"""Apply a validated friend ZIP without replacing environments or saved cards."""
+"""Apply a validated distribution ZIP without replacing environments or saved cards."""
 
 from datetime import datetime, timezone
 from contextlib import contextmanager
@@ -24,7 +24,7 @@ from package_layout import ROOT_FILES as ROOT_FILES, is_allowed
 
 REPOSITORY = 'senkoisbroken/Ghoul-Defense'
 RELEASE_API = 'https://api.github.com/repos/'+REPOSITORY+'/releases/latest'
-ZIP_NAME = 'Ghoul-Defense-friend.zip'
+ZIP_NAME = 'Ghoul-Defense.zip'
 
 
 class UpdateError(RuntimeError):
@@ -130,7 +130,7 @@ def read_package(path):
                 files[relative] = archive.read(entry)
         raw_manifest = files.get('package_info.json')
         if raw_manifest is None:
-            raise UpdateError('This ZIP has no package_info.json. Use a current friend ZIP.')
+            raise UpdateError('This ZIP has no package_info.json. Use a current distribution ZIP.')
         manifest = json.loads(raw_manifest)
         hashes = manifest.get('sha256')
         build = manifest.get('package_version', manifest.get('source_build'))
@@ -362,7 +362,7 @@ def main():
     root.withdraw()
     path = None
     if len(sys.argv) > 1:
-        path = (filedialog.askopenfilename(title='Select a local Ghoul Defense friend ZIP',
+        path = (filedialog.askopenfilename(title='Select a local Ghoul Defense distribution ZIP',
                                           filetypes=[('ZIP update', '*.zip')])
                 if sys.argv[1] == '--local' else sys.argv[1])
         if not path:
