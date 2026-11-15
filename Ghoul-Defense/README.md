@@ -89,3 +89,5 @@ not overwritten, and changed pick counts or hover appearance do not add copies.
 This ZIP contains the current helper, reference assets and card catalog. Python
 and packages are downloaded by setup; no machine-specific virtual environment,
 account configuration, development screenshots or old logs are bundled.
+
+Optional diagnostic sharing: tick the checkbox in the app and enter the private pairing code supplied by the macro owner. Selected action and status events are sent to the owner. Screenshots and complete local log files are not uploaded. Uncheck to stop sharing and remove the saved Windows-encrypted code. Received events are retained for 14 days.

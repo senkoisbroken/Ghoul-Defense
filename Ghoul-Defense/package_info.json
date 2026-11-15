@@ -1,12 +1,12 @@
 {
   "name": "Ghoul Defense",
-  "source_build": "56ab7edcdd2a",
-  "created_utc": "2026-11-07T18:26:58.151038+00:00",
+  "source_build": "cd8126ae9aea",
+  "created_utc": "2026-11-15T00:32:52.571740+00:00",
   "python": "3.13 (64-bit)",
   "downloaded_python": "3.13.17",
-  "catalog_images": 41,
+  "catalog_images": 42,
   "sha256": {
-    "app.py": "a5dda867b6dd5191b93faedc4383f4a26465a5e207c580576deb58f2836c4ec2",
+    "app.py": "e0676de844351134059bb6b756d20f74352818f7ccd585078a7214341f595f10",
     "automation.py": "b0f0aa0b2d4b228c4f83115434807495e205f274aa6002903b86297dfbbd115e",
     "boss.py": "5d9afabf6f41c84cf92490bf82e753fc6fd65b43ca56cd36ba44e2a22fd10d31",
     "catalog.py": "5262243c34d12e779a7d230669cd27671209dbfbf9784494c33ca980c1097f2a",
@@ -21,6 +21,7 @@
     "names.py": "070d865f583742275ecfd88f113d1237d4b512faab83c856f2bf645659ea0a61",
     "ocr.py": "59b93c5a376cd54f6e6fed3f0f8557e6666ade4072e87b3a01948dcf23b0a315",
     "package_layout.py": "b93d40065f2a0f17ac8d5c4d54cb6deff60129a0fb67c43f334ce658e31f062c",
+    "remote_logging.py": "f8f2c282e93d189852a48713e7c14cc60f6f565c5d910975b2a1c091fb8cb1ca",
     "ultimate.py": "822ef9ab9ae8bccc081ca4052035c09d896423cfb08033ec32a690f4bf62b958",
     "updater.py": "6bbbd4828c0f529966fc2e6725f4fdd8c019f50da61a0f6c3099fed84da18a50",
     "win_input.py": "b464be998b645470caa1493bde65f5e6e91a51c8d40fd11c68d143b02e6fb92a",
@@ -29,7 +30,7 @@
     "install.bat": "23300a0b160da7c2896076293654b3538054736dbc1f633f55f34cb352852251",
     "update.bat": "70bfc3912258b6f5b820ff98ec714f27f56dfb9d05c00e4a565a6b2b7e4314dd",
     "requirements.txt": "a22cf0abe5c518ca70794d02b017bfa76e440d595eae76dd7b71483225ee7f64",
-    "README.md": "4b601ea60761d73a71cca8336e8001af2516ca06f61ffc51ae977e0ea8298d49",
+    "README.md": "6e483be7cc814db11247489fc24c2f67d841431422e3899058b7004b5e72a341",
     "INSTALL.txt": "24bbd502df94bc5984147aad8aaacbca0829b8358f7a21d3cf6f03becd03b0c0",
     "assets/boss_health_outline.png": "cca762396148bfaddc1fe0c3f15e2b6414d8b9fcc295477cc87b4a44a725e3a7",
     "assets/perk_title.png": "94e04cd494fe2b3c46fed78ea28d6298ee0f464006fade1e89437b1056c3132b",
@@ -77,8 +78,9 @@
     "catalog/relics/speedmastery.png": "d6ae7c952958fa151b43178249483b741acca11a2bed411a9656cad8e939ef83",
     "catalog/relics/supplymastery.png": "f3e627b27a9e5020ccc4c0c20072b7a00af07065b06745abe1984360cbadb24f",
     "catalog/relics/takizawasgrin.png": "a0270304cab770df89af4c310f2f639e66af4ad837aa0fbeb2ec0663f260b7dd",
+    "catalog/relics/tarroad.png": "07b4ca2759b295807dbac866d1eaae14dd168e379e28172ff2fabda8cb8093a3",
     "catalog/relics/tatarasember.png": "c4a686db4868e6271b353f694efdd765aab6c3c00c6426f8b25a6cf4365ccd38",
     "catalog/relics/trapmastery.png": "63b2eaf8131754a40bb3a29f9a9bd1f63f479608a9124c04e291d6e9d1ce4884"
   },
-  "package_version": "fde3d49c8289"
+  "package_version": "398f55c8ed29"
 }

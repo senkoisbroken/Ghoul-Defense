@@ -15,6 +15,7 @@ from boss import BossTracker
 from ultimate import UltimatePolicy
 from automation import ScreenWorker
 from components import build_components, configure_logging, build_fingerprint
+from remote_logging import ENDPOINT, RemoteLoggingHandler, forget_token, load_token, save_token
 
 ROOT = Path(__file__).resolve().parent
 
@@ -91,11 +92,49 @@ def main():
     motion = Movement()
     messages = queue.Queue(maxsize=20)
     status = tk.StringVar(value='Paused — F8 starts')
+    remote_handler = None
     tk.Label(root, text='Ghoul Defense', font=('Segoe UI', 15, 'bold'), pady=10).pack()
     tk.Label(root, text='Damage → attack speed → turret buffs\nOtherwise: first available choice',
              padx=25, pady=5).pack()
     tk.Label(root, text='F8 start / pause').pack()
     tk.Label(root, text='Built-in W/S spam · same 1.2× repeater timing').pack()
+    sharing = tk.BooleanVar(value=False)
+
+    def toggle_sharing():
+        nonlocal remote_handler
+        if not sharing.get():
+            if remote_handler is not None:
+                logger.removeHandler(remote_handler)
+                remote_handler.close()
+                remote_handler = None
+            try:
+                forget_token(ROOT)
+            except OSError:
+                status.set('Could not clear saved diagnostic settings')
+            return
+        from tkinter import simpledialog
+        token = load_token(ROOT)
+        if token is None:
+            token = simpledialog.askstring('Share diagnostics',
+                'Enter the private diagnostic pairing code from the macro owner.',
+                show='*', parent=root)
+        if not token:
+            sharing.set(False)
+            return
+        try:
+            remote_handler = RemoteLoggingHandler(ENDPOINT, token)
+            save_token(ROOT, token)
+            logger.addHandler(remote_handler)
+            status.set('Diagnostic sharing enabled')
+        except (OSError, ValueError) as error:
+            if remote_handler is not None:
+                remote_handler.close()
+                remote_handler = None
+            sharing.set(False)
+            status.set('Diagnostic sharing setup failed: ' + str(error))
+
+    tk.Checkbutton(root, text='Share diagnostic events with the macro owner',
+                   variable=sharing, command=toggle_sharing).pack()
     tk.Label(root, textvariable=status, wraplength=430, padx=20, pady=12).pack()
 
     def report(message):
@@ -176,6 +215,9 @@ def main():
         root.destroy()
 
     root.protocol('WM_DELETE_WINDOW', close)
+    if load_token(ROOT):
+        sharing.set(True)
+        toggle_sharing()
     build = build_fingerprint(ROOT)
     logger.info('Started paused build=%s; screenshot-only detection; no game memory access', build)
     poll()
@@ -192,6 +234,9 @@ def main():
                 pass
         thread.join(timeout=2)
         movement_thread.join(timeout=2)
+        if remote_handler is not None:
+            logger.removeHandler(remote_handler)
+            remote_handler.close()
         logger.removeHandler(handler)
         handler.close()
 
