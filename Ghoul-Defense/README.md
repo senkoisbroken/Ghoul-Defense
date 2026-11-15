@@ -34,8 +34,9 @@ The published distribution is at https://github.com/senkoisbroken/Ghoul-Defense.
 Close the helper and run `update.bat`; it downloads the newest published
 release anonymously and verifies SHA-256 checksums and package hashes.
 `update.bat --local` or dropping a distribution ZIP onto the launcher supports offline
-updates. Older installations need the current updater-helper ZIP copied into
-their existing folder once.
+updates. Installations using the previous updater need the current setup ZIP
+once; copy its App Files/updater.py into the existing application folder
+(App Files for the clean setup) before running Update.bat to retain saved data.
 
 The updater keeps `.venv`, logs and existing catalog pictures. `package_info.json`
 records the packaged version and hashes. Replaced files are backed up under

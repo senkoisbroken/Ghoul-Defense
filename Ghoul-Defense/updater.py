@@ -24,7 +24,7 @@ from package_layout import ROOT_FILES as ROOT_FILES, is_allowed
 
 REPOSITORY = 'senkoisbroken/Ghoul-Defense'
 RELEASE_API = 'https://api.github.com/repos/'+REPOSITORY+'/releases/latest'
-ZIP_NAME = 'Ghoul-Defense.zip'
+ZIP_NAME = 'Ghoul-Defense-Setup.zip'
 
 
 class UpdateError(RuntimeError):
@@ -110,6 +110,8 @@ def read_package(path):
             entries = archive.infolist()
             if len(entries) > 10000 or sum(entry.file_size for entry in entries) > 64*1024*1024:
                 raise UpdateError('Update ZIP is too large.')
+            setup_layout = any(entry.filename == 'Ghoul-Defense/App Files/package_info.json'
+                               for entry in entries)
             for entry in entries:
                 name = entry.filename
                 if name.casefold() in seen:
@@ -120,6 +122,12 @@ def read_package(path):
                         or stat.S_ISLNK(entry.external_attr >> 16)):
                     raise UpdateError('Unsafe ZIP entry: ' + name)
                 relative = name[len('Ghoul-Defense/'):]
+                if setup_layout:
+                    if relative in ('Start.bat', 'Update.bat', 'Read Me.txt') and not entry.is_dir():
+                        continue
+                    if not relative.startswith('App Files/'):
+                        raise UpdateError('Unexpected ZIP file: ' + name)
+                    relative = relative[len('App Files/'):]
                 if entry.is_dir():
                     if relative.rstrip('/') not in ('', 'assets', 'catalog',
                                                     'catalog/perks', 'catalog/relics'):
