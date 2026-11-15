@@ -16,7 +16,6 @@ from ultimate import UltimatePolicy
 from automation import ScreenWorker
 from components import build_components, configure_logging, build_fingerprint
 from diagnostic_upload import snapshot_lines, send_snapshot
-from remote_logging import load_token
 
 ROOT = Path(__file__).resolve().parent
 
@@ -117,15 +116,9 @@ def main():
                 preview_window.focus_set()
                 return
             preview_window = None
-        from tkinter import messagebox, simpledialog, scrolledtext
-        token = load_token(ROOT)
-        if token is None:
-            token = simpledialog.askstring('Send diagnostic log',
-                'Enter the private pairing code from the macro owner.', show='*', parent=root)
-        if not token:
-            return
+        from tkinter import messagebox, scrolledtext
         try:
-            lines = snapshot_lines(ROOT, token)
+            lines = snapshot_lines(ROOT)
         except (OSError, ValueError) as exc:
             messagebox.showerror('Diagnostic log', str(exc), parent=root)
             return
@@ -158,7 +151,7 @@ def main():
 
             def run_upload():
                 try:
-                    result = send_snapshot(ROOT, token, lines,
+                    result = send_snapshot(ROOT, None, lines,
                                            progress=progress,
                                            cancelled=stopping.is_set)
                 except Exception:

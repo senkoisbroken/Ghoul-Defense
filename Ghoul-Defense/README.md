@@ -64,8 +64,8 @@ fingerprint, action decisions, movement gates and boss diagnostics.
 Use **Send diagnostic logs** to review a sanitized copy of the latest 32 KiB
 of `macro.log`, then choose whether to send it to the macro owner's AWS receiver.
 The preview can still contain private information: review it before sending.
-The upload excludes screenshots and rotated log backups. The owner supplies the
-pairing code; received records are retained for 14 days. Keep the macro open until
+The upload excludes screenshots and rotated log backups. No pairing code is
+needed. Received records are retained for 14 days. Keep the macro open until
 it reports success. No logs are sent automatically.
 
 ## Module map

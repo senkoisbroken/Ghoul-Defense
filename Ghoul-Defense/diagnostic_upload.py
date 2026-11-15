@@ -47,10 +47,10 @@ def open_request(request, timeout=5):
 class UploadClient:
     """One-shot upload transport with no worker thread and no queue."""
 
-    def __init__(self, endpoint, token, client_id=None):
+    def __init__(self, endpoint, token=None, client_id=None):
         if endpoint != ENDPOINT:
             raise ValueError('Invalid diagnostics endpoint')
-        if not re.fullmatch(r'[A-Za-z0-9_-]{32,128}', token):
+        if token is not None and not re.fullmatch(r'[A-Za-z0-9_-]{32,128}', token):
             raise ValueError('Invalid diagnostics token')
         if client_id is not None and not re.fullmatch(r'[A-Za-z0-9_-]{8,64}', client_id):
             raise ValueError('Invalid diagnostics client ID')
@@ -66,11 +66,10 @@ class UploadClient:
         if len(body) > MAX_REQUEST_BYTES:
             return PostResult(False, REJECTED, 'A log part was too large to send.')
 
-        request = urllib.request.Request(
-            self.endpoint, body,
-            {'Authorization': 'Bearer ' + self.token,
-             'Content-Type': 'application/json'},
-            method='POST')
+        headers = {'Content-Type': 'application/json'}
+        if self.token is not None:
+            headers['Authorization'] = 'Bearer ' + self.token
+        request = urllib.request.Request(self.endpoint, body, headers, method='POST')
         try:
             with open_request(request, timeout=5) as response:
                 status = getattr(response, 'status', None)
@@ -83,7 +82,7 @@ class UploadClient:
                 pass
             if code in (401, 403):
                 return PostResult(False, AUTH_FAILED,
-                                  'Pairing code was rejected (HTTP %d).' % code)
+                                  'Diagnostic server denied the request (HTTP %d).' % code)
             if code in (408, 429) or 500 <= code <= 599:
                 return PostResult(False, TEMPORARY,
                                   'Server is temporarily unavailable (HTTP %d).' % code)
@@ -155,7 +154,7 @@ def _post_with_retry(client, payload, progress, cancelled):
             return PostResult(False, CANCELLED, 'Upload cancelled.')
 
 
-def send_snapshot(root, token, lines=None, progress=None, cancelled=None):
+def send_snapshot(root, token=None, lines=None, progress=None, cancelled=None):
     """Upload exactly ``lines`` after the caller has reviewed them.
 
     ``progress`` is called with short status strings from the worker thread;
