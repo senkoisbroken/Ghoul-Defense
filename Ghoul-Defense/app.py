@@ -94,6 +94,9 @@ def main():
     status = tk.StringVar(value='Paused — F8 starts')
     remote_handler = None
     remote_checks = queue.SimpleQueue()
+    candidates = set()
+    candidates_lock = threading.Lock()
+    sharing_status = tk.StringVar(value='Diagnostics: off')
     tk.Label(root, text='Ghoul Defense', font=('Segoe UI', 15, 'bold'), pady=10).pack()
     tk.Label(root, text='Damage → attack speed → turret buffs\nOtherwise: first available choice',
              padx=25, pady=5).pack()
@@ -112,6 +115,7 @@ def main():
                 forget_token(ROOT)
             except OSError:
                 status.set('Could not clear saved diagnostic settings')
+            sharing_status.set('Diagnostics: off')
             return
         from tkinter import simpledialog
         token = load_token(ROOT) if reuse_saved else None
@@ -129,21 +133,29 @@ def main():
             status.set('Diagnostic sharing setup failed: ' + str(error))
             return
 
+        with candidates_lock:
+            candidates.add(candidate)
         sharing_button.config(state='disabled')
-        status.set('Checking diagnostic connection…')
+        sharing_status.set('Diagnostics: checking connection…')
 
         def verify_sharing():
-            accepted = candidate.verify()
-            if stopping.is_set():
-                candidate.close()
-                return
-            remote_checks.put((candidate, token, accepted))
+            try:
+                accepted = candidate.verify()
+            except Exception:
+                accepted = False
+            with candidates_lock:
+                if stopping.is_set():
+                    candidates.discard(candidate)
+                    candidate.close()
+                else:
+                    remote_checks.put((candidate, token, accepted))
 
         threading.Thread(target=verify_sharing, name='diagnostics-check', daemon=True).start()
 
     sharing_button = tk.Checkbutton(root, text='Share diagnostic events with the macro owner',
                                     variable=sharing, command=toggle_sharing)
     sharing_button.pack()
+    tk.Label(root, textvariable=sharing_status, wraplength=430).pack()
     tk.Label(root, textvariable=status, wraplength=430, padx=20, pady=12).pack()
 
     def report(message):
@@ -202,21 +214,28 @@ def main():
         nonlocal previous_keys, poll_id, remote_handler
         while not remote_checks.empty():
             candidate, token, accepted = remote_checks.get_nowait()
+            with candidates_lock:
+                candidates.discard(candidate)
             sharing_button.config(state='normal')
             if accepted:
                 try:
                     save_token(ROOT, token)
                     remote_handler = candidate
                     logger.addHandler(remote_handler)
-                    status.set('Diagnostic sharing connected')
+                    sharing_status.set('Diagnostics: connected')
+                    logger.info('Started paused build=%s; screenshot-only detection; no game memory access', build_fingerprint(ROOT))
                 except OSError:
                     candidate.close()
                     sharing.set(False)
-                    status.set('Could not save diagnostic settings')
+                    sharing_status.set('Diagnostics: could not save settings')
             else:
                 candidate.close()
                 sharing.set(False)
-                status.set('Diagnostic connection failed. Check the pairing code and internet.')
+                sharing_status.set('Diagnostics: connection failed; check code and internet')
+        if remote_handler is not None:
+            health = remote_handler.health()
+            sharing_status.set('Diagnostics: %s; sent %s, queued %s, dropped %s' %
+                               (health['state'], health['sent'], health['queued'], health['dropped']))
         pressed = {key for key in (0x77,) if desktop.down(key)}
         new = pressed - previous_keys
         previous_keys = pressed
@@ -237,6 +256,11 @@ def main():
     def close():
         running.clear()
         stopping.set()
+        with candidates_lock:
+            pending_candidates = list(candidates)
+            candidates.clear()
+        for candidate in pending_candidates:
+            candidate.close()
         motion.stop()
         root.destroy()
 

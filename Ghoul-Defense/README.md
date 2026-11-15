@@ -1,93 +1,102 @@
-# Ghoul Defense - Windows friend package
+# Ghoul Defense Helper
 
-Extract the entire ZIP to a writable folder, then double-click **start.bat**.
-The launcher checks for 64-bit Python 3.13. If needed, it downloads Python
-3.13.17 from python.org and installs it for your Windows account. It creates a
-local `.venv` and installs the pinned dependencies. Internet is required for
-first-time setup. No administrator installation is required.
+A Windows helper that uses screenshots and ordinary foreground keyboard/mouse
+input. It does not read Roblox memory or inject code.
 
-`install.bat` runs setup without opening the helper. You normally need it only
-once; `start.bat` also handles setup when needed. Keep the extracted files together.
-Once setup succeeds, normal launches reuse the existing environment. Packages
-are installed again when requirements change, or when you run `install.bat`
-to repair the installation.
+## Controls and behavior
 
-## Updating an existing installation
+- **F8** starts or pauses movement, menu choices and wave automation together.
+- Patrol repeats six W taps followed by six S taps at the existing 1.2x timing.
+- Choices prioritize damage, attack speed and turret buffs; other offers use
+  the first available card. One-, two- and three-card menus are supported.
+- With 1–3 remaining enemies and a confirmed living boss, movement follows its
+  visible lane. An unclear boss position holds movement while recognition retries.
+- **F** is used against an aligned boss after four seconds with little HP
+  progress, only when Quinque Strike reads Ready, with ten seconds between uses.
+- Verified Play Again screens receive **E**. This checks sent input; it cannot
+  guarantee the game consumed an ability or completed a restart.
+- Movement releases input during menus, pause, focus loss and shutdown.
+  Roblox must remain visible in the foreground. Close separate W/S repeaters.
 
-1. Close the Ghoul Defense helper.
-2. Double-click **update.bat** in your existing Ghoul-Defense folder.
-3. It downloads the latest published release from
-   https://github.com/senkoisbroken/Ghoul-Defense and checks its SHA-256 checksum.
-4. Wait for Update complete, then open **start.bat**.
+## Launch and installation
 
-Friends do not need GitHub accounts, tokens, or GitHub CLI. An internet connection
-is needed to download updates. Local edits are available to friends after the
-maintainer publishes a new GitHub release.
+This development folder's `start.bat` uses the existing interpreter at
+`E:\omniroute\Guess-The-Card-portable\.venv\Scripts\pythonw.exe` and installs nothing.
 
-For offline updates, drag a downloaded friend ZIP onto `update.bat` (or run
-`update.bat --local` to choose a ZIP). Updates keep `.venv`, logs,
-and existing catalog pictures, and add any new catalog pictures. Required
-packages are refreshed on the next launch only if requirements changed.
-Replaced files are backed up under `.updates/backup-*`. The updater validates
-the package manifest and file hashes before applying changes, and attempts to
-restore replaced files if applying an update fails.
+The separately distributed friend package has portable `start.bat`, `install.bat`
+and `update.bat` launchers. Its first setup installs 64-bit Python 3.13 and pinned
+packages if needed. `install.bat` runs setup/repair without starting the helper.
+Normal starts reuse the environment; changed requirements trigger package setup.
 
-For friends with an older version that has no `update.bat`, extract the small
-**Ghoul-Defense-update-helper.zip** into their existing Ghoul-Defense folder
-once. It adds `update.bat`, `updater.py`, and the shared `package_layout.py`
-dependency; then follow the steps above.
-New installations already include the online updater. Friends who have the
-older file-picker updater should also copy the new updater-helper ZIP into
-their existing folder once to enable direct GitHub updates.
+## Friend updates
 
-The refactored updater keeps the newest five safe backup trees after a
-successful update and clears stale staging trees while holding the update lock.
-Linked or inaccessible trees are left alone. The helper's runtime fingerprint
-now covers every runtime module, required reference asset and launcher.
+The published distribution is at https://github.com/senkoisbroken/Ghoul-Defense.
+Friends close the helper and run `update.bat`; it downloads the newest published
+release anonymously and verifies SHA-256 checksums and package hashes.
+`update.bat --local` or dropping a friend ZIP onto the launcher supports offline
+updates. Older installations need the current updater-helper ZIP copied into
+their existing folder once.
 
-## Use
+The updater keeps `.venv`, logs and existing catalog pictures. `package_info.json`
+records the packaged version and hashes. Replaced files are backed up under
+`.updates/backup-*`; the refactored updater retains the newest five safe backup
+trees and clears stale staging trees under the update lock. Linked or inaccessible
+trees are left alone. Applying a failed update attempts to restore replaced files.
 
-1. Open Ghoul Defense in Roblox.
-2. Open `start.bat`. The helper starts paused.
-3. Close any separate W/S repeater or other macro that sends the same controls.
-4. Focus Roblox and press **F8** to start. Press **F8** again to pause.
-5. Keep the game visible and in the foreground. Focus loss stops input.
+Refactor changes in this development folder are not published automatically.
+Updating the full ZIP, bootstrap helper and GitHub release is a separate release
+step. The bootstrap helper must include `package_layout.py` with `updater.py`.
 
-F8 controls everything: six W taps followed by six S taps at the current 1.2x
-speed, perk/relic selection, and starting waves. Menu choices prioritize damage,
-then attack speed, then turret buffs; other offers use the first available card.
-One-, two- and three-card menus are supported.
+## Saved cards, layouts and diagnostics
 
-With 1-3 enemies remaining and a confirmed living boss HUD, movement tries to
-align with the boss and follow lane changes. If its lane is unclear, movement
-holds while the screen is checked again. This remains experimental; first-run
-monitoring is recommended on a different computer or window layout.
+All offered perk/relic pictures, including unselected choices, are saved under
+`catalog/perks` and `catalog/relics`. Deduplication is by kind and normalized
+recognized name. Existing files are never overwritten; this persists on restart.
 
-The helper can press **F** when aligned with a boss after four seconds with
-little HP progress, provided Quinque Strike reads Ready. There is a ten-second
-cooldown between accepted F inputs. It presses **E** on a verified Play Again
-screen to restart. These checks verify sent input; they cannot guarantee that
-the game accepted an ability or completed a restart.
+Recognition supports the recorded landscape layouts and scale variations in
+the regression fixtures. This does not guarantee every layout, occlusion, game
+update or very small/portrait window. Lane following remains screen-dependent.
 
-## Saved card pictures
+`macro.log` rotates at 1 MB with two backups. It records the complete runtime
+fingerprint, action decisions, movement gates and boss diagnostics.
+`work/boss_lane_unclear.png` holds the latest unclear boss frame.
 
-Your package includes the current perk/relic picture catalog. All offered cards
-are saved, including unselected ones, under `catalog/perks` and `catalog/relics`.
-There is one PNG per kind and normalized recognized name. Existing images are
-not overwritten, and changed pick counts or hover appearance do not add copies.
+Optional diagnostic sharing sends selected macro status and action events to the
+macro owner's AWS receiver. Enable it with the checkbox and enter the private
+pairing code supplied by the owner. The code is encrypted for the current Windows
+user. Uncheck the box to stop sharing and remove the saved code. The uploader
+does not send screenshots, user paths, or full local log files. AWS retains the
+received events for 14 days.
 
-## Troubleshooting
+The diagnostics status shows whether delivery is connected or retrying, and the
+number of events sent, waiting, or dropped. The uploader retries while the macro
+is open, but its queue is bounded and exists only in memory. Events can be lost
+if it fills or the macro closes; the local log remains available for diagnosis.
 
-- Run from the extracted folder, not inside the ZIP viewer.
-- If setup fails, keep the error window open and share its text.
-- `macro.log` records actions, F8 state and the loaded source build. It rotates
-  automatically. `work/boss_lane_unclear.png` holds the latest unclear boss frame.
-- If the game UI is clipped, hidden or changed by an update, detection may wait.
-- Candy Bonus belongs to permanent Upgrades, not run perks. The helper does not
-  buy permanent upgrades, spend Robux, read Roblox process memory or inject code.
+## Module map
 
-This ZIP contains the current helper, reference assets and card catalog. Python
-and packages are downloaded by setup; no machine-specific virtual environment,
-account configuration, development screenshots or old logs are bundled.
+- `app.py`: GUI, controls and the public action/ultimate entry points.
+- `automation.py`: screen-worker steps, retry bookkeeping and reset paths.
+- `components.py`: shared lazy OCR wiring, logging and runtime fingerprint.
+- `names.py`, `ocr.py`, `gate.py`, `detector.py`, `frame.py`: card policy,
+  recognition, gate/menu detection and shared normalization.
+- `ghoul.py`: compatibility exports for existing imports and manual probes.
+- `boss.py`: HUD parsing, bar/sprite geometry and boss hold state.
+- `win_input.py`: shared Windows input primitives; `desktop.py` and
+  `ws_repeater.py` retain their adapter APIs and the standalone repeater.
+- `movement.py`, `controls.py`, `ultimate.py`, `catalog.py`: movement,
+  capture ownership, ultimate policy and catalog persistence.
+- `package_layout.py`, `updater.py`: runtime inventory, validated updates,
+  locking, backup/rollback and cleanup.
 
-Optional diagnostic sharing: tick the checkbox in the app and enter the private pairing code supplied by the macro owner. Selected action and status events are sent to the owner. Screenshots and complete local log files are not uploaded. Uncheck to stop sharing and remove the saved Windows-encrypted code. Received events are retained for 14 days.
+## Verification and manual tools
+
+Run explicit test modules only through `work/check_tests.py`, using the existing
+project Python. Each group is limited to 512 MiB and 45 seconds; do not use full
+unittest discovery or raise those limits. Disable bytecode writes when verifying
+state integrity. See REVIEW.md for the current matrix.
+
+Historical probes are in `work/manual/`; they are not automated tests. Some
+have live/network or validation-folder side effects, so run them only after
+review and explicit authorization. `work/check_tests.py` and `work/seed_catalog.py`
+remain at their original paths. Recorded fixtures remain beside their tests.

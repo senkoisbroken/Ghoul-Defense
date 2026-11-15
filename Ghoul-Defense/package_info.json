@@ -1,12 +1,12 @@
 {
   "name": "Ghoul Defense",
-  "source_build": "74def15f7b93",
-  "created_utc": "2026-11-15T00:39:52.990399+00:00",
+  "source_build": "bc9ebe81f131",
+  "created_utc": "2026-11-15T00:45:15.609899+00:00",
   "python": "3.13 (64-bit)",
   "downloaded_python": "3.13.17",
   "catalog_images": 42,
   "sha256": {
-    "app.py": "ee5933c906f48d74f17af97683d14cfd042964fd8cb51d84d0ed8a4e534bcd2e",
+    "app.py": "65579f949889627be7dd8957141608c7c346d415ee2a94fdf1e8dce22d3503c5",
     "automation.py": "b0f0aa0b2d4b228c4f83115434807495e205f274aa6002903b86297dfbbd115e",
     "boss.py": "5d9afabf6f41c84cf92490bf82e753fc6fd65b43ca56cd36ba44e2a22fd10d31",
     "catalog.py": "5262243c34d12e779a7d230669cd27671209dbfbf9784494c33ca980c1097f2a",
@@ -21,7 +21,7 @@
     "names.py": "070d865f583742275ecfd88f113d1237d4b512faab83c856f2bf645659ea0a61",
     "ocr.py": "59b93c5a376cd54f6e6fed3f0f8557e6666ade4072e87b3a01948dcf23b0a315",
     "package_layout.py": "b93d40065f2a0f17ac8d5c4d54cb6deff60129a0fb67c43f334ce658e31f062c",
-    "remote_logging.py": "16c6c585e267757e0053205291a24a813048be5b3df3d1186526d87f72dcf25c",
+    "remote_logging.py": "4efdc01000d68c4783025bd36082f37f2214443aca0455ccc54850d9f9127889",
     "ultimate.py": "822ef9ab9ae8bccc081ca4052035c09d896423cfb08033ec32a690f4bf62b958",
     "updater.py": "6bbbd4828c0f529966fc2e6725f4fdd8c019f50da61a0f6c3099fed84da18a50",
     "win_input.py": "b464be998b645470caa1493bde65f5e6e91a51c8d40fd11c68d143b02e6fb92a",
@@ -30,7 +30,7 @@
     "install.bat": "23300a0b160da7c2896076293654b3538054736dbc1f633f55f34cb352852251",
     "update.bat": "70bfc3912258b6f5b820ff98ec714f27f56dfb9d05c00e4a565a6b2b7e4314dd",
     "requirements.txt": "a22cf0abe5c518ca70794d02b017bfa76e440d595eae76dd7b71483225ee7f64",
-    "README.md": "6e483be7cc814db11247489fc24c2f67d841431422e3899058b7004b5e72a341",
+    "README.md": "92a6611a3c23868c5cf6c569f1ca48c364424ddfb95a3e4ad4ff78375d073256",
     "INSTALL.txt": "24bbd502df94bc5984147aad8aaacbca0829b8358f7a21d3cf6f03becd03b0c0",
     "assets/boss_health_outline.png": "cca762396148bfaddc1fe0c3f15e2b6414d8b9fcc295477cc87b4a44a725e3a7",
     "assets/perk_title.png": "94e04cd494fe2b3c46fed78ea28d6298ee0f464006fade1e89437b1056c3132b",
@@ -82,5 +82,5 @@
     "catalog/relics/tatarasember.png": "c4a686db4868e6271b353f694efdd765aab6c3c00c6426f8b25a6cf4365ccd38",
     "catalog/relics/trapmastery.png": "63b2eaf8131754a40bb3a29f9a9bd1f63f479608a9124c04e291d6e9d1ce4884"
   },
-  "package_version": "7b2fd379f437"
+  "package_version": "7e356ffbbc47"
 }
